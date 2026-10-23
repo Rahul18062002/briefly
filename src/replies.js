@@ -13,8 +13,16 @@ import { LANGUAGES } from './relevance.js'
 
 // the trigger per delivery app: Slack thread replies arrive instantly; Discord channel messages are polled
 const TRIGGERS = {
-  slack: { trigger: 'rowhqxbjvzav', version: 'V1', input: (channel) => ({ channel }) },
-  discord: { trigger: 'rowa9j6rwjzs', version: 'V2', input: (channel) => ({ channel_id: channel, scheduledTime: '5' }) }
+  slack: {
+    trigger: 'rowhqxbjvzav', // trigger_id; the version id is read at run time
+    version: 'V1',
+    input: (channel) => ({ channel })
+  },
+  discord: {
+    trigger: 'rowa9j6rwjzs',
+    version: 'V2',
+    input: (channel) => ({ channel_id: channel, scheduledTime: '5' })
+  }
 }
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
@@ -102,10 +110,10 @@ export function readEvent(app, body) {
 
 async function post(user, app, msg, text) {
   const ch = app === 'slack'
-    ? { slug: 'slack', action: 'row1jrbor', version: 'V107', input: { destination: { messageto: 'thread', thread_channel_id: msg.channel, thread_ts: msg.threadTs }, markdown_content: text, bot_details: { bot_name: 'Briefly' }, preview: { unfurl_links: false, unfurl_media: false } } }
-    : { slug: 'discord', action: 'rowprvu04wpv', version: 'V6', input: { channel_id: msg.channel, message_content: text.slice(0, 1900), mention_everyone: false, tts: false, bot_name: 'Briefly' } }
+    ? { slug: 'slack', action: 'row1jrbor', v: 'V107', input: { destination: { messageto: 'thread', thread_channel_id: msg.channel, thread_ts: msg.threadTs }, markdown_content: text, bot_details: { bot_name: 'Briefly' }, preview: { unfurl_links: false, unfurl_media: false } } }
+    : { slug: 'discord', action: 'rowprvu04wpv', v: 'V6', input: { channel_id: msg.channel, message_content: text.slice(0, 1900), mention_everyone: false, tts: false, bot_name: 'Briefly' } }
   const scriptId = await ensureEnabled(user, ch.slug)
-  const v = await viasocket.catalog.versionIdFor(await serviceIdFor(ch.slug), ch.action, ch.version)
+  const v = await viasocket.catalog.versionIdFor(await serviceIdFor(ch.slug), ch.action, ch.v)
   const out = await viasocket.runAction(scriptId, v, ch.input)
   if (isFailure(out)) throw new Error(out.message || 'reply not sent')
   return out
