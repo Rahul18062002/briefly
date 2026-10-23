@@ -11,7 +11,35 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="shell">
+<div class="auth" id="auth" hidden>
+  <section class="auth-hero">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span><span class="brand-name">Briefly</span></div>
+    <div class="auth-pitch">
+      <h1>AI news that matters to you, in plain words.</h1>
+      <p>Briefly reads Hacker News, new research, GitHub releases and official company blogs, keeps what fits your interests, and delivers it to Slack, Discord or email.</p>
+      <ul>
+        <li><span data-icon="sparkles"></span>Picked for your interests, and it learns from your 👍 / 👎</li>
+        <li><span data-icon="clock"></span>Instant for big launches, a calm digest for the rest</li>
+        <li><span data-icon="chat"></span>Ask questions and get answers with sources</li>
+      </ul>
+    </div>
+    <p class="auth-foot">Powered by viaSocket · Sources: Hacker News, arXiv, GitHub, company blogs</p>
+  </section>
+  <section class="auth-side">
+    <div class="auth-card">
+      <div class="seg" id="auth-tabs"><button data-mode="login" class="on" type="button">Sign in</button><button data-mode="signup" type="button">Create account</button></div>
+      <h2 id="auth-title">Welcome back</h2>
+      <form id="auth-form" novalidate>
+        <div class="field" id="name-field" hidden><label for="auth-name">Your name</label><input class="input" id="auth-name" autocomplete="name"></div>
+        <div class="field"><label for="auth-email">Email</label><input class="input" id="auth-email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="auth-password">Password</label><input class="input" id="auth-password" type="password" autocomplete="current-password" required minlength="8"><small class="hint" id="pw-hint" hidden>At least 8 characters.</small></div>
+        <p class="auth-error" id="auth-error" role="alert" hidden></p>
+        <button class="btn primary wide" id="auth-submit" type="submit">Sign in</button>
+      </form>
+    </div>
+  </section>
+</div>
+<div class="shell" id="shell" hidden>
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span>
@@ -26,6 +54,7 @@
       <button data-view="delivery"><span class="nav-ico" data-icon="send"></span><span>Delivery</span><span class="nav-check" data-icon="check"></span></button>
     </nav>
     <div class="side-card" id="side-card"></div>
+    <div class="account" id="account"></div>
   </aside>
 
   <main class="main">

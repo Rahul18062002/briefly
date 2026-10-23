@@ -54,6 +54,7 @@ const api = async (path, body) => {
   const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const data = await res.json().catch(() => ({}))
   // detail is the server's own reason, sent only outside production: it makes a screenshot enough to diagnose
+  if (res.status === 401 && data.signIn) { location.reload(); throw new Error('Please sign in.') } // the session ended
   if (!res.ok) throw new Error((data.error || 'Something went wrong') + (data.detail ? ` (${data.detail})` : ''))
   return data
 }
@@ -418,10 +419,51 @@ async function save(section, btn) {
   })
 }
 
+// ---------- sign in ----------
+function showAuth() {
+  $('#auth').hidden = false
+  let mode = 'login'
+  const setMode = (m) => {
+    mode = m
+    for (const b of $$('#auth-tabs button')) b.classList.toggle('on', b.dataset.mode === m)
+    $('#auth-title').textContent = m === 'login' ? 'Welcome back' : 'Create your account'
+    $('#auth-submit').textContent = m === 'login' ? 'Sign in' : 'Create account'
+    $('#name-field').hidden = m === 'login'
+    $('#pw-hint').hidden = m === 'login'
+    $('#auth-password').autocomplete = m === 'login' ? 'current-password' : 'new-password'
+    $('#auth-error').hidden = true
+  }
+  for (const b of $$('#auth-tabs button')) b.onclick = () => setMode(b.dataset.mode)
+  $('#auth-form').onsubmit = async (e) => {
+    e.preventDefault()
+    const btn = $('#auth-submit')
+    btn.disabled = true
+    const res = await fetch(`/api/auth/${mode}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('#auth-email').value, password: $('#auth-password').value, name: $('#auth-name').value })
+    })
+    const data = await res.json().catch(() => ({}))
+    btn.disabled = false
+    if (res.ok) return location.assign('/') // start fresh, not on the page the last person had open
+    $('#auth-error').textContent = data.error || 'Something went wrong. Please try again.'
+    $('#auth-error').hidden = false
+  }
+  $('#auth-email').focus()
+}
+function renderAccount() {
+  const a = me.account
+  $('#account').innerHTML = `<span class="avatar">${esc((a.name || a.email)[0].toUpperCase())}</span><span class="who"><b>${esc(a.name)}</b><small>${esc(a.email)}</small></span><button class="link" id="sign-out" title="Sign out">Sign out</button>`
+  $('#sign-out').onclick = async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.assign('/') }
+}
+
 // ---------- start ----------
 async function init() {
   paintIcons()
+  const { account } = await fetch('/api/auth/me').then((r) => r.json())
+  if (!account) return showAuth()
+  $('#shell').hidden = false
   ;[catalog, me] = await Promise.all([api('/api/catalog'), api('/api/me')])
+  renderAccount()
   // The token is fetched on page load, not in the click: the popup must open straight from the click.
   embed = await api(`/api/viasocket/token?apps=${catalog.apps.map((a) => a.slug).join(',')}`)
   loadConnectScript()

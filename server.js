@@ -1,6 +1,5 @@
 import './src/env.js'
 import express from 'express'
-import { randomUUID } from 'node:crypto'
 import { viasocket, serviceIdFor } from './src/viasocket.js'
 import { interests, delivery, engine, channelById, allowedApps, tagById, companyById } from './src/config.js'
 import { load, save, getUser, putUser, userEvents } from './src/store.js'
@@ -9,6 +8,7 @@ import { runCycle, runDigests, processUser, deliverDigest, pollSources } from '.
 import { digestMessage } from './src/format.js'
 import { learn } from './src/learning.js'
 import { ask, chatLog } from './src/ask.js'
+import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure } from './src/auth.js'
 import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
 
 const app = express()
@@ -16,16 +16,50 @@ app.use(express.json())
 app.use(express.static('public'))
 app.use('/vendor/viasocket-apps', express.static('node_modules/viasocket-apps/dist/esm'))
 
-// Login is out of scope for this demo: each browser gets a stable id in a cookie, which stands in for the
-// logged-in user. It is the product's own id for the user, never the email.
+// ---- accounts ----
+app.set('trust proxy', true) // Embarko terminates HTTPS in front of the app
+const cookies = (req) => Object.fromEntries((req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter(([k]) => k).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]))
+function setCookie(req, res, name, value, maxAge) {
+  res.append('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${req.secure ? '; Secure' : ''}`)
+}
+
+// who is signed in; req.userId is the id every other part of the product (and viaSocket) uses for them
 app.use((req, res, next) => {
-  let id = (req.headers.cookie || '').match(/tp_uid=([\w-]+)/)?.[1]
-  if (!id) {
-    id = `u-${randomUUID()}`
-    res.setHeader('Set-Cookie', `tp_uid=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`)
-  }
-  req.userId = id
+  req.cookies = cookies(req)
+  const session = sessionFor(req.cookies[COOKIE])
+  if (session) Object.assign(req, { session, account: session.account, userId: session.account.id })
   next()
+})
+
+const authError = (res, e) => res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong on our side. Please try again.' })
+function startSession(req, res, account) {
+  setCookie(req, res, COOKIE, createSession(account.id), 30 * 86400)
+  setCookie(req, res, 'tp_uid', '', 0) // the pre-login browser id is no longer needed
+  res.json({ account })
+}
+app.post('/api/auth/signup', (req, res) => {
+  try { startSession(req, res, signUp(req.body || {}, req.cookies.tp_uid)) } catch (e) { authError(res, e) }
+})
+app.post('/api/auth/login', (req, res) => {
+  const keys = [`ip:${req.ip}`, `email:${String(req.body?.email || '').toLowerCase()}`]
+  if (tooManyAttempts(...keys)) return res.status(429).json({ error: 'Too many attempts. Please wait 15 minutes and try again.' })
+  try { startSession(req, res, signIn(req.body || {})) } catch (e) { if (e.status === 401) noteFailure(...keys); authError(res, e) }
+})
+app.post('/api/auth/logout', (req, res) => {
+  endSession(req.cookies[COOKIE])
+  setCookie(req, res, COOKIE, '', 0)
+  res.json({ ok: true })
+})
+app.get('/api/auth/me', (req, res) => res.json({ account: req.account || null }))
+app.post('/api/auth/password', (req, res) => {
+  if (!req.account) return res.status(401).json({ error: 'Please sign in.' })
+  try { changePassword(req.account.id, req.body?.current, req.body?.next); res.json({ ok: true, message: 'Password changed.' }) } catch (e) { authError(res, e) }
+})
+
+// everything else needs a signed-in user (the app list is public: the sign-in page shows it)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/catalog' || req.account) return next()
+  res.status(401).json({ error: 'Please sign in.', signIn: true })
 })
 
 const FREQUENCIES = ['instant', 'daily', 'weekly']
@@ -81,6 +115,7 @@ app.get('/api/me', async (req, res, next) => {
       }
     }
     res.json({
+      account: req.account,
       onboarded: user.onboarded,
       profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], ...user.profile },
       learned: { votes: user.learned?.votes || 0 },
