@@ -1,0 +1,22 @@
+{
+  "name": "briefly",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node server.js",
+    "verify": "node scripts/verify.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "express": "^4.22.3",
+    "viasocket-apps": "^0.7.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
