@@ -313,6 +313,19 @@ function renderFields() {
   }
 }
 
+// ---------- two-way replies ----------
+function renderReplies() {
+  const r = me.replies || {}
+  $('#replies-card').hidden = !(r.possible || r.enabled)
+  $('#replies-on').checked = !!r.enabled
+  $('#replies-on').onchange = async (e) => {
+    const on = e.target.checked
+    e.target.disabled = true
+    try { toast((await api('/api/replies', { enabled: on })).message); me = await api('/api/me') } catch (err) { toast(err.message, true); e.target.checked = !on }
+    e.target.disabled = false
+  }
+}
+
 // ---------- save stories to (one-click actions) ----------
 function renderSaveTargets() {
   $('#save-targets').innerHTML = catalog.actions.map((a) => {
@@ -519,6 +532,7 @@ async function save(section, btn) {
     saved[section] = true
     me.saved = saved
     renderNav()
+    renderReplies()
     $('#test').hidden = !me.delivery?.ready
     toast(msg)
     // during setup each step leads to the next; afterwards Save keeps you where you are
@@ -584,6 +598,7 @@ async function init() {
   renderSchedule()
   renderApps()
   renderSaveTargets()
+  renderReplies()
   if (state.channel) chooseApp(catalog.channels.find((c) => c.id === state.channel).app)
   $('#test').hidden = !me.delivery?.ready
   $('#test').onclick = (e) => busy(e.currentTarget, async () => toast((await api('/api/test-message', {})).message))

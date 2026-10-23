@@ -9,6 +9,7 @@ import { instantMessage, digestMessage } from './format.js'
 import { channelById } from './config.js'
 import { digestDue, inQuietHours } from './schedule.js'
 import { mutedBy } from './learning.js'
+import { recordSent } from './replies.js'
 
 const log = (...a) => console.log(new Date().toISOString(), ...a)
 
@@ -108,7 +109,7 @@ export async function deliverInstant(user) {
     if (s.status !== 'queued' || s.mode !== 'instant') continue
     const entry = { event: db.events[id], ai: s.ai }
     try {
-      await send(user, [instantMessage(entry, channel.format)], { important: true })
+      recordSent(user, await send(user, [instantMessage(entry, channel.format)], { important: true }), [id])
       Object.assign(s, { status: 'sent', sentAt: new Date().toISOString() })
       record(user, 'instant', [id], true)
       sent++
@@ -135,7 +136,9 @@ export async function deliverDigest(user, period, slot) {
   }
   const entries = ids.map((id) => ({ event: db.events[id], ai: seen[id].ai }))
   try {
-    const result = await send(user, digestMessage(entries, channel.format, period))
+    const parts = digestMessage(entries, channel.format, period)
+    const result = await send(user, parts)
+    recordSent(user, result, parts.ids) // so a reply can say "explain 3"
     for (const id of ids) Object.assign(seen[id], { status: 'sent', sentAt: new Date().toISOString() })
     record(user, `${period} digest`, ids, true)
     user.lastDigestAt = new Date().toISOString()

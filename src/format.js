@@ -6,7 +6,8 @@ const esc = (s = '') => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/
 const alsoOn = (ev) => (ev.sources.length > 1 ? ` (also on ${ev.sources.slice(1).map((s) => SOURCE_NAMES[s]).join(', ')})` : '')
 
 function itemText(entry, style) {
-  const { headline, summary, why_it_matters: why, concept } = entry.ai
+  const { summary, why_it_matters: why, concept } = entry.ai
+  const headline = entry.n ? `${entry.n}. ${entry.ai.headline}` : entry.ai.headline // numbered in digests: "explain 3" in a reply
   const link = entry.event.url
   const src = SOURCE_NAMES[entry.event.sources[0]] + alsoOn(entry.event)
   if (style === 'slack')
@@ -36,8 +37,8 @@ export function instantMessage(entry, style) {
 function quickLine(entry, style) {
   const { headline, topic } = entry.ai
   const link = entry.event.url
-  if (style === 'slack') return `• ${headline}: ${link}`
-  if (style === 'discord') return `• ${headline}: <${link}>`
+  if (style === 'slack') return `${entry.n}. ${headline}: ${link}`
+  if (style === 'discord') return `${entry.n}. ${headline}: <${link}>`
   return `<li style="margin:0 0 6px"><a href="${esc(link)}">${esc(headline)}</a> <span style="color:#888">(${esc(topic)})</span></li>`
 }
 
@@ -50,12 +51,17 @@ export function digestMessage(entries, style, period, topCount = engine.digestTo
   const top = sorted.slice(0, topCount), rest = sorted.slice(topCount)
   const groups = {}
   for (const e of top) (groups[e.ai.topic || 'Other'] ??= []).push(e)
+  // numbers follow reading order (top stories by topic, then the quick list) and run across every message part
+  const order = [...Object.values(groups).flat(), ...rest]
+  const numbered = new Map(order.map((e, i) => [e, { ...e, n: i + 1 }]))
+  for (const list of [...Object.values(groups), rest]) list.forEach((e, i) => (list[i] = numbered.get(e)))
+  const ids = order.map((e) => e.event.id)
   const title = `Your ${period} Briefly: ${entries.length} update${entries.length === 1 ? '' : 's'}`
   if (style === 'email') {
     const h2 = (text) => `<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#666;border-bottom:1px solid #eee;padding-bottom:4px;margin-top:28px">${esc(text)}</h2>`
     const html = Object.entries(groups).map(([topic, list]) => `${h2(topic)}${list.map((e) => itemText(e, style)).join('')}`).join('') +
       (rest.length ? `${h2('Also worth a look')}<ul style="padding-left:18px">${rest.map((e) => quickLine(e, style)).join('')}</ul>` : '')
-    return [{ subject: title, body: `<div style="font-family:system-ui,sans-serif;max-width:600px"><h1 style="font-size:20px">${esc(title)}</h1>${html}</div>` }]
+    return Object.assign([{ subject: title, body: `<div style="font-family:system-ui,sans-serif;max-width:600px"><h1 style="font-size:20px">${esc(title)}</h1>${html}</div>` }], { ids })
   }
   const heading = (text) => (style === 'slack' ? `*${text.toUpperCase()}*` : `__**${text}**__`)
   // Pieces are never split; a blank line separates sections and full items, a line break separates quick lines.
@@ -74,5 +80,5 @@ export function digestMessage(entries, style, period, topCount = engine.digestTo
   const hardCap = style === 'discord' ? 2000 : 4000
   if (parts.length && current.length < 400 && parts.at(-1).length + current.length + 2 <= hardCap) parts.push(parts.pop() + '\n' + current)
   else parts.push(current)
-  return parts.map((body) => ({ subject: title, body }))
+  return Object.assign(parts.map((body) => ({ subject: title, body })), { ids }) // ids: event ids by number (1 = ids[0])
 }

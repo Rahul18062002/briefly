@@ -10,6 +10,7 @@ import { digestMessage } from './src/format.js'
 import { learn } from './src/learning.js'
 import { LANGUAGES } from './src/relevance.js'
 import { computeTrends } from './src/trends.js'
+import { enableReplies, disableReplies, checkSecret, handleReply, replyChannel } from './src/replies.js'
 import { ask, chatLog } from './src/ask.js'
 import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure } from './src/auth.js'
 import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
@@ -57,6 +58,15 @@ app.get('/api/auth/me', (req, res) => res.json({ account: req.account || null })
 app.post('/api/auth/password', (req, res) => {
   if (!req.account) return res.status(401).json({ error: 'Please sign in.' })
   try { changePassword(req.account.id, req.body?.current, req.body?.next); res.json({ ok: true, message: 'Password changed.' }) } catch (e) { authError(res, e) }
+})
+
+// Replies from Slack/Discord, forwarded by the user's viaSocket subscription. Not a browser call: it is signed with
+// the per-user secret baked into the handler, and answers at once while Briefly replies in the background.
+app.post('/api/hooks/replies/:userId', (req, res) => {
+  const user = getUser(req.params.userId)
+  if (!checkSecret(user, req.get('authorization')) || !user.replies?.enabled) return res.sendStatus(401)
+  res.json({ ok: true })
+  handleReply(user, req.body).then((did) => console.log(`[replies] ${user.id}: ${did}`)).catch((e) => console.error(`[replies] ${user.id} failed:`, e.message))
 })
 
 // everything else needs a signed-in user (the app list is public: the sign-in page shows it)
@@ -124,6 +134,7 @@ app.get('/api/me', async (req, res, next) => {
       onboarded: user.onboarded,
       profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], watch: [], language: 'en', ...user.profile },
       learned: { votes: user.learned?.votes || 0 },
+      replies: { enabled: !!user.replies?.enabled, app: user.replies?.app || null, possible: !!replyChannel(user) },
       schedule: { text: scheduleText(user.profile), next: nextDigestLabel(user.profile) },
       delivery: user.delivery,
       saveTargets: Object.fromEntries(Object.entries(user.saveTargets || {}).map(([id, t]) => [id, { labels: t.labels }])),
@@ -298,6 +309,20 @@ app.post('/api/stories/:id/save', async (req, res, next) => {
     await runStoryAction(user, req.body.action, event, seen?.ai)
     if (seen) { seen.savedTo = [...new Set([...(seen.savedTo || []), def.id])]; save() }
     res.json({ ok: true, message: `Saved to ${def.appName}.` })
+  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e) }
+})
+
+// Two-way replies on/off
+app.post('/api/replies', async (req, res, next) => {
+  try {
+    const user = currentUser(req)
+    if (req.body.enabled) {
+      const base = process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`
+      const r = await enableReplies(user, base)
+      return res.json({ ok: true, message: `Done. Reply to Briefly’s messages in ${r.app === 'slack' ? 'Slack (in the message’s thread)' : 'Discord (replies are picked up within about 5 minutes)'}: try “explain 1” or ask a question.` })
+    }
+    await disableReplies(user)
+    res.json({ ok: true, message: 'Replies are off. Briefly will no longer read that channel.' })
   } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e) }
 })
 
