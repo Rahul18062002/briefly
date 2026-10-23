@@ -43,3 +43,10 @@ test('a real Slack thread reply (from viaSocket sampleEvent, org 4160) is read c
   assert.deepEqual(readEvent('slack', { event: real }), { text: 'test', fromBot: false, channel: 'C07DZ9UG46S', threadTs: '1785577450.519559', parentKey: 'slack:C07DZ9UG46S:1785577450.519559' })
   assert.equal(readEvent('slack', { event: { ...real, event: { ...real.event, bot_id: 'B1' } } }).fromBot, true)
 })
+
+test('a test message is remembered as a test, so a reply to it gets a clear answer', () => {
+  const user = {}
+  recordSent(user, [{ ok: true, channel: 'C1', ts: '1.2' }], [], { test: true })
+  assert.equal(user.sentMessages[0].key, 'slack:C1:1.2')
+  assert.equal(user.sentMessages[0].test, true)
+})

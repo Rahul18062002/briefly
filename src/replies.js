@@ -41,10 +41,10 @@ export function replyChannel(user) {
 }
 
 /** Remembers which stories a sent message carried, so a reply to it can say "explain 3". */
-export function recordSent(user, results, eventIds) {
+export function recordSent(user, results, eventIds, extra = {}) {
   for (const r of results || []) {
     const key = r?.ts && r?.channel ? `slack:${r.channel}:${r.ts}` : r?.id && r?.channel_id ? `discord:${r.id}` : null
-    if (key) user.sentMessages = [{ key, eventIds, at: new Date().toISOString() }, ...(user.sentMessages || [])].slice(0, 60)
+    if (key) user.sentMessages = [{ key, eventIds, at: new Date().toISOString(), ...extra }, ...(user.sentMessages || [])].slice(0, 60)
   }
 }
 
@@ -145,7 +145,7 @@ export async function handleReply(user, body) {
   const cmd = parseReply(msg.text)
   if (!cmd) return 'ignored'
   const sent = user.sentMessages || []
-  const record = sent.find((m) => m.key === msg.parentKey) || (app === 'discord' ? sent.find((m) => m.key.startsWith('discord:')) : null)
+  const record = sent.find((m) => m.key === msg.parentKey) || (app === 'discord' ? sent.find((m) => m.key.startsWith('discord:') && !m.test) : null)
   const db = load(), seen = userEvents(user.id)
   const pick = (n) => {
     const id = record?.eventIds?.[n - 1]
@@ -158,7 +158,9 @@ export async function handleReply(user, body) {
     text = [reply.text, ...(reply.sources || []).map((s) => `[${s.n}] ${s.title}: ${s.url}`)].join('\n')
   } else if (cmd.kind !== 'help') {
     const story = pick(cmd.n)
-    if (!story) text = `I couldn’t find story ${cmd.n} in that message. ${HELP}`
+    if (record?.test) text = `That was a test message, so it has no real story to ${cmd.kind === 'explain' ? 'explain' : 'use'}. Try this in the thread of a real Briefly update (an alert or your digest), or ask me any question about the news here.`
+    else if (!record) text = `I can only use story numbers in replies to Briefly’s updates (alerts and digests). Reply in one of those threads, or ask me any question about the news here.`
+    else if (!story) text = `That update has no story ${cmd.n}. ${HELP}`
     else if (cmd.kind === 'explain') text = await explain(user, story.event, story.s?.ai)
     else if (cmd.kind === 'vote') {
       if (story.s) { Object.assign(story.s, { vote: cmd.vote, votedAt: new Date().toISOString() }); learn(user, seen, db.events); putUser(user) }

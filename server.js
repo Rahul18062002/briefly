@@ -11,7 +11,7 @@ import { learn } from './src/learning.js'
 import { LANGUAGES } from './src/relevance.js'
 import { computeTrends } from './src/trends.js'
 import { weeklyAnalysis, weekKey } from './src/analysis.js'
-import { enableReplies, disableReplies, checkSecret, handleReply, replyChannel } from './src/replies.js'
+import { enableReplies, disableReplies, checkSecret, handleReply, replyChannel, recordSent } from './src/replies.js'
 import { ask, chatLog } from './src/ask.js'
 import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure, setContext, accountByEmail, accountById } from './src/auth.js'
 import { createTeam, invite, accept, decline, removeMember, cancelInvite, leave, deleteTeam, teamsOf, invitesFor } from './src/teams.js'
@@ -269,7 +269,8 @@ app.post('/api/test-message', async (req, res, next) => {
     const channel = channelById(user.delivery?.channel)
     if (!channel) return res.status(400).json({ error: 'Choose where to deliver first.' })
     const sample = [{ event: { url: 'https://github.com/', sources: ['github'] }, ai: { relevance: 100, topic: 'Welcome', headline: 'Briefly is set up', summary: 'This is a test message. Your updates will arrive here, in this format.', why_it_matters: 'You can stop scrolling feeds: what matters to you comes to you.', concept: user.profile.learningMode ? 'A digest bundles several updates into one message so your channel stays quiet.' : '' } }]
-    await send(user, digestMessage(sample, channel.format, 'test'))
+    recordSent(user, await send(user, digestMessage(sample, channel.format, 'test')), [], { test: true }) // so a reply to it gets a clear answer
+    putUser(user)
     res.json({ ok: true, message: `Test sent to ${channel.label}. Check it now.` })
   } catch (e) { next(e) }
 })
