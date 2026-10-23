@@ -8,6 +8,7 @@ import { runCycle, runDigests, processUser, deliverDigest, pollSources } from '.
 import { digestMessage } from './src/format.js'
 import { learn } from './src/learning.js'
 import { LANGUAGES } from './src/relevance.js'
+import { computeTrends } from './src/trends.js'
 import { ask, chatLog } from './src/ask.js'
 import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure } from './src/auth.js'
 import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
@@ -258,6 +259,12 @@ app.post('/api/feedback', (req, res) => {
   const learned = learn(user, seen, load().events)
   putUser(user)
   res.json({ ok: true, votes: learned.votes, message: vote > 0 ? 'Got it — more stories like this.' : vote < 0 ? 'Got it — fewer stories like this.' : 'Rating removed.' })
+})
+
+// Trend radar
+app.get('/api/trends', (req, res) => {
+  const user = currentUser(req)
+  res.json(computeTrends(load().events, { tz: validTimeZone(user.profile.timezone) ? user.profile.timezone : 'UTC', profile: user.profile }))
 })
 
 // Ask Briefly

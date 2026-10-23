@@ -73,3 +73,21 @@ test('without the AI, a story still gets a score, its original headline and a cl
   assert.ok(a.summary.endsWith('…') && a.summary.length <= 241 && !/\s…$/.test(a.summary))
   assert.equal(fallbackAssessment(event, { score: 1, matched: [] }, []).summary, 'New on Hacker News.')
 })
+
+test('trend radar: daily counts, topics and companies week over week, rising words', async () => {
+  const { computeTrends } = await import('../src/trends.js')
+  const now = Date.parse('2026-10-23T12:00:00Z')
+  const ev = (id, title, daysAgo) => [id, { id, title, text: '', firstSeen: new Date(now - daysAgo * 864e5).toISOString() }]
+  const events = Object.fromEntries([
+    ev('a', 'Anthropic ships a new robot arm demo', 1), ev('b', 'Robot arm benchmark for humanoid tasks', 2), ev('c', 'Humanoid robot walks', 3),
+    ev('d', 'OpenAI pricing update', 9), ev('e', 'Robot vacuum news', 10)
+  ])
+  const t = computeTrends(events, { now, tz: 'UTC', profile: { tags: ['robotics'] } })
+  assert.deepEqual(t.totals, { thisWeek: 3, lastWeek: 2 })
+  assert.equal(t.daily.length, 14)
+  assert.equal(t.daily.reduce((s, d) => s + d.stories, 0), 5)
+  const robotics = t.topics.find((x) => x.id === 'robotics')
+  assert.deepEqual([robotics.thisWeek, robotics.lastWeek, robotics.yours], [3, 1, true])
+  assert.equal(t.companies.find((x) => x.id === 'openai').change, -1)
+  assert.deepEqual(t.rising.map((r) => r.term).slice(0, 3), ['robot', 'arm', 'humanoid']) // equal rise: more mentions first; 'vacuum' fell
+})

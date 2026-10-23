@@ -48,6 +48,7 @@
     <nav class="nav" id="nav">
       <button data-view="briefing"><span class="nav-ico" data-icon="layout"></span><span>Briefing</span></button>
       <button data-view="ask"><span class="nav-ico" data-icon="chat"></span><span>Ask Briefly</span></button>
+      <button data-view="trends"><span class="nav-ico" data-icon="trend"></span><span>Trends</span></button>
       <p class="nav-label">Your setup</p>
       <button data-view="interests"><span class="nav-ico" data-icon="sparkles"></span><span>Interests</span><span class="nav-check" data-icon="check"></span></button>
       <button data-view="schedule"><span class="nav-ico" data-icon="clock"></span><span>Schedule</span><span class="nav-check" data-icon="check"></span></button>
@@ -116,6 +117,24 @@
         </form>
         <p class="chat-note">Answers come only from stories Briefly has collected in the last 30 days, with links to every source.</p>
       </div>
+    </section>
+
+    <!-- Trends -->
+    <section class="page" data-page="trends" hidden>
+      <div class="stats trend-stats" id="trend-stats"></div>
+      <div class="panel">
+        <div class="panel-head"><h2>Stories per day</h2><span class="hint">Everything Briefly collected, last 14 days</span></div>
+        <div class="columns" id="daily"></div>
+      </div>
+      <div class="split even">
+        <div class="panel"><div class="panel-head"><h2>Topics this week</h2><span class="hint">Change vs. last week</span></div><div class="hbars" id="topic-bars"></div></div>
+        <div class="panel"><div class="panel-head"><h2>Companies in the news</h2><span class="hint">Change vs. last week</span></div><div class="hbars" id="company-bars"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Rising words</h2><span class="hint">Mentioned more this week than last</span></div>
+        <div class="rising" id="rising"></div>
+      </div>
+      <div class="chart-tip" id="chart-tip" role="tooltip" hidden></div>
     </section>
 
     <!-- Interests -->

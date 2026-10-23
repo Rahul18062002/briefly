@@ -36,7 +36,8 @@ const ICONS = {
   down: '<path d="M17 14V3h4v11z"/><path d="M17 14l-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
-  plus: '<path d="M12 5v14M5 12h14"/>'
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>'
 }
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.sparkles}</svg>`
 const paintIcons = (root = document) => $$('[data-icon]', root).forEach((el) => { el.innerHTML = icon(el.dataset.icon) })
@@ -78,6 +79,7 @@ const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const HEAD = {
   briefing: ['Your briefing', 'What’s new for you', 'Stories picked for your interests, and what is on its way to you. Rate stories with 👍 / 👎 and Briefly learns your taste.'],
+  trends: ['Trend radar', 'What’s rising', 'What AI news is about this week compared with last week, counted across every source Briefly reads.'],
   ask: ['Ask Briefly', 'Ask about the news', 'Questions are answered only from the stories Briefly has collected, with a link to every source.'],
   interests: ['Step 1 · Interests', 'What should we watch?', 'Pick the topics you care about. We read Hacker News, new research papers and GitHub releases, and keep only what matches.'],
   schedule: ['Step 2 · Schedule', 'When should we reach you?', 'Choose how often updates arrive. Big launches can always come right away.'],
@@ -99,12 +101,12 @@ function nextLabel() {
 
 // ---------- navigation ----------
 function show(view) {
-  if ((view === 'briefing' || view === 'ask') && !me.onboarded) view = 'interests'
+  if (['briefing', 'ask', 'trends'].includes(view) && !me.onboarded) view = 'interests'
   if (view !== (location.hash.slice(1) || view)) $('#toast').hidden = true // a message belongs to the page it came from
   for (const p of $$('.page')) p.hidden = p.dataset.page !== view
   for (const b of $$('#nav button')) b.classList.toggle('on', b.dataset.view === view)
   const [eyebrow, title, lede] = HEAD[view]
-  $('#eyebrow').textContent = me.onboarded && !['briefing', 'ask'].includes(view) ? 'Settings' : eyebrow
+  $('#eyebrow').textContent = me.onboarded && !['briefing', 'ask', 'trends'].includes(view) ? 'Settings' : eyebrow
   $('#title').textContent = title
   $('#lede').textContent = lede
   $('#top-actions').innerHTML = ''
@@ -114,6 +116,7 @@ function show(view) {
     $('#digest').onclick = (e) => busy(e.currentTarget, async () => { toast((await api('/api/digest-now', {})).message); await renderBriefing() })
     renderBriefing().catch((e) => toast(e.message, true))
   }
+  if (view === 'trends') renderTrends().catch((e) => toast(e.message, true))
   if (view === 'ask') {
     $('#top-actions').innerHTML = `<button class="btn ghost" id="new-chat">${icon('plus')}New chat</button>`
     $('#new-chat').onclick = (e) => busy(e.currentTarget, async () => { await api('/api/ask', { newChat: true }); chat = []; drawChat() })
@@ -126,6 +129,7 @@ function show(view) {
 function renderNav() {
   $('#nav [data-view=briefing]').hidden = !me.onboarded
   $('#nav [data-view=ask]').hidden = !me.onboarded
+  $('#nav [data-view=trends]').hidden = !me.onboarded
   $('#nav [data-view=interests]').classList.toggle('done', me.profile.tags.length > 0 && (me.onboarded || !!me.saved?.interests))
   $('#nav [data-view=schedule]').classList.toggle('done', me.onboarded || !!me.saved?.schedule)
   $('#nav [data-view=delivery]').classList.toggle('done', !!me.delivery?.ready)
@@ -363,6 +367,49 @@ async function renderBriefing() {
   renderFeedList()
 }
 
+// ---------- trends ----------
+const delta = (n) => (n > 0 ? `<span class="up">▲ ${n}</span>` : n < 0 ? `<span class="down">▼ ${-n}</span>` : '<span class="flat">no change</span>')
+const srTable = (caption, head, rows) => `<table class="sr-only"><caption>${caption}</caption><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`
+function hbars(rows, caption) {
+  if (!rows.length) return '<div class="empty">Not enough stories yet.</div>'
+  const max = Math.max(...rows.map((r) => r.thisWeek), 1)
+  return rows.slice(0, 10).map((r) => `<div class="hbar" data-tip="${esc(r.label)}: ${r.thisWeek} this week, ${r.lastWeek} last week">
+      <span class="hbar-label">${esc(r.label)}${r.yours ? ' <em>following</em>' : ''}</span>
+      <span class="hbar-track"><i style="width:${(r.thisWeek / max) * 100}%"></i><b>${r.thisWeek}</b></span>
+      <span class="hbar-delta">${delta(r.change)}</span></div>`).join('') +
+    srTable(caption, ['Name', 'This week', 'Last week'], rows.map((r) => [r.label, r.thisWeek, r.lastWeek]))
+}
+async function renderTrends() {
+  const t = await api('/api/trends')
+  const top = t.topics[0], rise = t.rising[0]
+  $('#trend-stats').innerHTML = [
+    ['trend', 45, t.totals.thisWeek, 'Stories this week', delta(t.totals.thisWeek - t.totals.lastWeek)],
+    ['sparkles', 262, top ? esc(top.label) : '—', 'Biggest topic this week', top ? `${top.thisWeek} stories` : ''],
+    ['bolt', 150, rise ? esc(rise.term) : '—', 'Fastest-rising word', rise ? `${rise.lastWeek} → ${rise.thisWeek} mentions` : '']
+  ].map(([i, hue, value, label, sub]) => `<div class="stat"><span class="stat-ico tinted" style="${tint(hue)}">${icon(i)}</span><div><b class="stat-value">${value}</b><span>${label}</span><small>${sub}</small></div></div>`).join('')
+
+  const max = Math.max(...t.daily.map((d) => d.stories), 1)
+  // a clean axis maximum: 1, 2 or 5 times a power of ten, so the midpoint is a round number too
+  const pow = 10 ** Math.floor(Math.log10(max)), nice = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * pow).find((v) => v >= max && Number.isInteger(v / 2)) || 2 * pow
+  const fmt = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString([], { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+  $('#daily').innerHTML = `<div class="dcol-axis"><span>${nice}</span><span>${nice / 2}</span><span>0</span></div>
+    <div class="dcol-plot">${t.daily.map((d, i) => `<div class="dcol" data-tip="${fmt(d.day)}: ${d.stories} stor${d.stories === 1 ? 'y' : 'ies'}"><i style="height:${(d.stories / nice) * 100}%"></i><small>${i % 2 === 1 || t.daily.length - 1 === i ? fmt(d.day) : ''}</small></div>`).join('')}</div>` +
+    srTable('Stories per day', ['Day', 'Stories'], t.daily.map((d) => [fmt(d.day), d.stories]))
+  $('#topic-bars').innerHTML = hbars(t.topics, 'Topics this week and last week')
+  $('#company-bars').innerHTML = hbars(t.companies, 'Companies this week and last week')
+  $('#rising').innerHTML = t.rising.length
+    ? t.rising.map((r) => `<span class="rise-chip"><b>${esc(r.term)}</b><small>${r.lastWeek} → ${r.thisWeek}</small></span>`).join('')
+    : '<div class="empty">Nothing is clearly rising yet. Check back after a few days of news.</div>'
+
+  // one tooltip for every bar and column
+  const tip = $('#chart-tip')
+  for (const el of $$('[data-page=trends] [data-tip]')) {
+    el.onmouseenter = el.onfocus = () => { tip.textContent = el.dataset.tip; tip.hidden = false; const r = el.getBoundingClientRect(); tip.style.left = `${r.left + r.width / 2}px`; tip.style.top = `${r.top - 8}px` }
+    el.onmouseleave = el.onblur = () => (tip.hidden = true)
+    el.tabIndex = 0
+  }
+}
+
 // ---------- ask ----------
 const SUGGEST = ['What did OpenAI announce this week?', 'Any new open-source model releases?', 'What’s new in research on AI agents?', 'What changed in vLLM recently?']
 let chat = []
@@ -468,7 +515,6 @@ async function init() {
   paintIcons()
   const { account } = await fetch('/api/auth/me').then((r) => r.json())
   if (!account) return showAuth()
-  $('#shell').hidden = false
   ;[catalog, me] = await Promise.all([api('/api/catalog'), api('/api/me')])
   renderAccount()
   // The token is fetched on page load, not in the click: the popup must open straight from the click.
@@ -494,6 +540,7 @@ async function init() {
   renderNav()
   const wanted = location.hash.slice(1)
   show(HEAD[wanted] ? wanted : me.onboarded ? 'briefing' : 'interests')
+  $('#shell').hidden = false // only once every button works
   // back/forward and links like #schedule switch sections too
   window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (HEAD[v] && $(`.page[data-page=${v}]`).hidden) show(v) })
 }
