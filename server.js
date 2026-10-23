@@ -239,7 +239,7 @@ app.get('/api/options', async (req, res, next) => {
   } catch (e) { next(e) }
 })
 
-app.post('/api/delivery', (req, res) => {
+app.post('/api/delivery', async (req, res) => {
   const user = currentUser(req)
   const channel = channelById(req.body.channel)
   if (!channel) return res.status(400).json({ error: 'Choose where to deliver.' })
@@ -258,8 +258,18 @@ app.post('/api/delivery', (req, res) => {
   user.delivery = { channel: channel.id, fields, labels: req.body.labels || {}, ready: true }
   user.onboarded = true
   putUser(user)
+  // replies follow the delivery channel: re-subscribe when it moved, turn them off where they can't work (email)
+  let note = ''
+  if (user.replies?.enabled) {
+    const target = replyChannel(user)
+    if (!target?.channel) { await disableReplies(user).catch(() => {}); note = ' Replies are off: they work in Slack and Discord channels.' }
+    else if (target.channel !== user.replies.channel || target.app !== user.replies.app) {
+      try { await enableReplies(user, process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`); note = ' Replies now follow this channel.' }
+      catch { await disableReplies(user).catch(() => {}); note = ' Replies could not move to this channel and are off; turn them on again below.' }
+    }
+  }
   const where = Object.values(req.body.labels || {}).flat().join(', ') || Object.values(fields).flat().join(', ')
-  res.json({ ok: true, message: `Done. Briefly will deliver to ${channel.label}${where ? ` (${where})` : ''}.` })
+  res.json({ ok: true, message: `Done. Briefly will deliver to ${channel.label}${where ? ` (${where})` : ''}.${note}` })
 })
 
 // ---- viaSocket: Act ----

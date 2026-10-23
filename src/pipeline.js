@@ -47,6 +47,13 @@ export function decide(ai, profile) {
   return ai.major && ai.relevance >= bar ? 'instant' : 'digest'
 }
 
+/** Only news from the last day or so, found after the reader signed up, is worth an instant alert. Exported for tests. */
+export function isFresh(event, user, now = Date.now()) {
+  const maxAge = engine.instantMaxAgeHours * 36e5
+  const published = Date.parse(event.publishedAt || event.firstSeen)
+  return Date.parse(event.firstSeen) >= Date.parse(user.createdAt) && !(now - published > maxAge)
+}
+
 /** Scores the events this user has not seen yet; instant ones are delivered, the rest queued for the digest. */
 export async function processUser(user, { since } = {}) {
   const db = load()
@@ -82,7 +89,8 @@ export async function processUser(user, { since } = {}) {
     if (!ai) continue // left for the next run, never dropped
     if (watched[e.id]) ai.watch = watched[e.id]
     const record = { ai, at: new Date().toISOString() }
-    const mode = watched[e.id] ? 'instant' : decide(ai, user.profile)
+    let mode = watched[e.id] ? 'instant' : decide(ai, user.profile)
+    if (mode === 'instant' && !isFresh(e, user)) mode = 'digest' // older stories (a new reader's backlog) never alert
     if (mode === 'skip') { seen[e.id] = { ...record, status: 'skipped', reason: 'low relevance' }; continue }
     seen[e.id] = { ...record, status: 'queued', mode }
     mode === 'instant' ? instant++ : queued++

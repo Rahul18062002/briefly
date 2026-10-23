@@ -10,5 +10,10 @@
   "minRelevance": 40,
   "instantRelevance": 75,
   "instantRelevanceMajorOnlyMode": 60,
-  "ai": { "service": "openai", "model": "gpt-5-mini" }
+  "ai": {
+    "service": "openai",
+    "model": "gpt-5-mini"
+  },
+  "digestMaxStories": 20,
+  "instantMaxAgeHours": 36
 }

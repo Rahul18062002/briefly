@@ -141,3 +141,17 @@ test('weekly analysis: ISO week keys, and a long analysis keeps every Discord me
   assert.ok(all.includes('A week of agents') && all.includes('Watch next week') && all.includes('1. Story'))
   assert.ok(all.indexOf('A week of agents') < all.indexOf('1. Story')) // the analysis opens the roundup
 })
+
+test('instant alerts only for fresh news found after sign-up; a long digest is capped', async () => {
+  const { isFresh } = await import('../src/pipeline.js')
+  const now = Date.parse('2026-10-23T12:00:00Z')
+  const user = { createdAt: '2026-10-23T10:00:00Z' }
+  assert.equal(isFresh({ firstSeen: '2026-10-23T11:00:00Z', publishedAt: '2026-10-23T09:00:00Z' }, user, now), true)
+  assert.equal(isFresh({ firstSeen: '2026-10-23T09:00:00Z', publishedAt: '2026-10-23T09:00:00Z' }, user, now), false) // backlog
+  assert.equal(isFresh({ firstSeen: '2026-10-23T11:00:00Z', publishedAt: '2026-10-12T09:00:00Z' }, user, now), false) // old blog post
+  const { digestMessage } = await import('../src/format.js')
+  const entries = Array.from({ length: 47 }, (_, i) => ({ event: { id: `e${i}`, url: `https://x/${i}`, sources: ['arxiv'] }, ai: { relevance: 90 - i, topic: 'AI', headline: `Story ${i}`, summary: 's', why_it_matters: 'w' } }))
+  const parts = digestMessage(entries, 'slack', 'daily')
+  assert.equal(parts.ids.length, 20)
+  assert.ok(parts.at(-1).body.includes('…and 27 more in your Briefing'))
+})

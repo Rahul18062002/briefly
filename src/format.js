@@ -64,7 +64,9 @@ ${a.watch.length ? `<p style="margin:8px 0 0;color:#555"><b>Watch next week:</b>
 
 export function digestMessage(entries, style, period, topCount = engine.digestTopStories, analysis = null) {
   const sorted = [...entries].sort((a, b) => b.ai.relevance - a.ai.relevance)
-  const top = sorted.slice(0, topCount), rest = sorted.slice(topCount)
+  const top = sorted.slice(0, topCount), rest = sorted.slice(topCount, Math.max(topCount, engine.digestMaxStories))
+  const more = sorted.length - top.length - rest.length // the rest stay in the Briefing on the website
+  const moreText = more ? `…and ${more} more in your Briefing on the website.` : ''
   const groups = {}
   for (const e of top) (groups[e.ai.topic || 'Other'] ??= []).push(e)
   // numbers follow reading order (top stories by topic, then the quick list) and run across every message part
@@ -76,7 +78,8 @@ export function digestMessage(entries, style, period, topCount = engine.digestTo
   if (style === 'email') {
     const h2 = (text) => `<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#666;border-bottom:1px solid #eee;padding-bottom:4px;margin-top:28px">${esc(text)}</h2>`
     const html = Object.entries(groups).map(([topic, list]) => `${h2(topic)}${list.map((e) => itemText(e, style)).join('')}`).join('') +
-      (rest.length ? `${h2('Also worth a look')}<ul style="padding-left:18px">${rest.map((e) => quickLine(e, style)).join('')}</ul>` : '')
+      (rest.length ? `${h2('Also worth a look')}<ul style="padding-left:18px">${rest.map((e) => quickLine(e, style)).join('')}</ul>` : '') +
+      (moreText ? `<p style="color:#888">${esc(moreText)}</p>` : '')
     return Object.assign([{ subject: title, body: `<div style="font-family:system-ui,sans-serif;max-width:600px"><h1 style="font-size:20px">${esc(title)}</h1>${analysis ? analysisText(analysis, style) : ''}${html}</div>` }], { ids })
   }
   const heading = (text) => (style === 'slack' ? `*${text.toUpperCase()}*` : `__**${text}**__`)
@@ -85,6 +88,7 @@ export function digestMessage(entries, style, period, topCount = engine.digestTo
   if (analysis) pieces.push({ text: analysisText(analysis, style) }) // the week in brief opens a weekly roundup
   for (const [topic, list] of Object.entries(groups)) pieces.push({ text: heading(topic) }, ...list.map((e) => ({ text: itemText(e, style) })))
   if (rest.length) pieces.push({ text: heading('Also worth a look') }, ...rest.map((e, i) => ({ text: quickLine(e, style), tight: i > 0 })))
+  if (moreText) pieces.push({ text: style === 'slack' ? `_${moreText}_` : `*${moreText}*` })
   // Discord caps a message at 2000 characters and long Slack messages get cut up: split between pieces only.
   const limit = style === 'discord' ? 1900 : 3800
   const parts = []

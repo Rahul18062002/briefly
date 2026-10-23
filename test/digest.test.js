@@ -14,10 +14,11 @@ const entries = Array.from({ length: 25 }, (_, i) => ({
 }))
 
 for (const style of ['slack', 'discord', 'email']) {
-  test(`${style}: every item is in the digest, the top ones in full, and no message breaks the platform cap`, () => {
+  test(`${style}: the 20 best items are in the digest, the top ones in full, and no message breaks the platform cap`, () => {
     const parts = digestMessage(entries, style, 'daily', 6)
     const all = parts.map((p) => p.body).join('\n')
-    for (const e of entries) assert.ok(all.includes(e.event.url), `missing ${e.event.url}`)
+    for (const e of entries.slice(0, 20)) assert.ok(all.includes(e.event.url), `missing ${e.event.url}`)
+    assert.ok(!all.includes(entries[20].event.url) && all.includes('…and 5 more in your Briefing'))
     assert.equal(all.split('Why it matters').length - 1, 6)
     assert.ok(all.includes('Also worth a look') || all.includes('ALSO WORTH A LOOK'))
     const cap = { slack: 4000, discord: 2000, email: Infinity }[style]

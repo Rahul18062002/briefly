@@ -105,7 +105,7 @@ export function readEvent(app, body) {
   if (app === 'discord') // a real event: { content, id, channel_id, author: { bot }, webhook_id, message_reference }
     return { text: e.content, fromBot: !!(e.author?.bot || e.webhook_id), channel: e.channel_id, parentKey: e.message_reference?.message_id ? `discord:${e.message_reference.message_id}` : null }
   // Slack thread reply (Slack's message event shape)
-  return { text: e.text, fromBot: !!(e.bot_id || e.subtype === 'bot_message'), channel: e.channel, threadTs: e.thread_ts, parentKey: e.thread_ts ? `slack:${e.channel}:${e.thread_ts}` : null }
+  return { text: e.text, fromBot: !!(e.bot_id || e.subtype === 'bot_message'), channel: e.channel, threadTs: e.thread_ts, ts: e.ts, parentKey: e.thread_ts ? `slack:${e.channel}:${e.thread_ts}` : null }
 }
 
 async function post(user, app, msg, text) {
@@ -141,11 +141,16 @@ export async function handleReply(user, body) {
   const app = user.replies?.app
   const msg = readEvent(app, body)
   if (msg.fromBot || !msg.text) return 'ignored'
-  if (app === 'slack' && !msg.threadTs) return 'ignored' // only replies in Briefly's threads
   const cmd = parseReply(msg.text)
   if (!cmd) return 'ignored'
   const sent = user.sentMessages || []
-  const record = sent.find((m) => m.key === msg.parentKey) || (app === 'discord' ? sent.find((m) => m.key.startsWith('discord:') && !m.test) : null)
+  let record = sent.find((m) => m.key === msg.parentKey) || (app === 'discord' ? sent.find((m) => m.key.startsWith('discord:') && !m.test) : null)
+  if (app === 'slack' && !msg.threadTs) {
+    // typed in the channel, not in a thread: a story command means Briefly's latest update there; other chat is left alone
+    if (cmd.kind === 'ask' || !msg.ts) return 'ignored'
+    record = sent.find((m) => m.key.startsWith(`slack:${msg.channel}:`) && !m.test && m.eventIds?.length >= (cmd.n || 1)) || null
+    msg.threadTs = msg.ts // the answer goes in a thread under their message
+  }
   const db = load(), seen = userEvents(user.id)
   const pick = (n) => {
     const id = record?.eventIds?.[n - 1]

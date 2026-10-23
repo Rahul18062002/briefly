@@ -40,7 +40,7 @@ test('which channel replies come from, and the secret check', () => {
 test('a real Slack thread reply (from viaSocket sampleEvent, org 4160) is read correctly', () => {
   const real = { token: null, team_id: 'T082ACF6L9J', type: 'event_callback', event: { user: 'U0A6THCVAH1', type: 'message', ts: '1785577604.842049', text: 'test', team: 'T082ACF6L9J', thread_ts: '1785577450.519559', parent_user_id: 'U0A6THCVAH1', channel: 'C07DZ9UG46S', event_ts: '1785577604.842049', channel_type: 'channel' } }
   // the handler forwards it as { event: context.req.body }
-  assert.deepEqual(readEvent('slack', { event: real }), { text: 'test', fromBot: false, channel: 'C07DZ9UG46S', threadTs: '1785577450.519559', parentKey: 'slack:C07DZ9UG46S:1785577450.519559' })
+  assert.deepEqual(readEvent('slack', { event: real }), { text: 'test', fromBot: false, channel: 'C07DZ9UG46S', threadTs: '1785577450.519559', ts: '1785577604.842049', parentKey: 'slack:C07DZ9UG46S:1785577450.519559' })
   assert.equal(readEvent('slack', { event: { ...real, event: { ...real.event, bot_id: 'B1' } } }).fromBot, true)
 })
 
@@ -49,4 +49,10 @@ test('a test message is remembered as a test, so a reply to it gets a clear answ
   recordSent(user, [{ ok: true, channel: 'C1', ts: '1.2' }], [], { test: true })
   assert.equal(user.sentMessages[0].key, 'slack:C1:1.2')
   assert.equal(user.sentMessages[0].test, true)
+})
+
+test('a Slack command typed in the channel (not in a thread) is read with its ts', () => {
+  const msg = readEvent('slack', { event: { event: { text: 'explain 2', channel: 'C1', ts: '5.5' } } })
+  assert.equal(msg.ts, '5.5')
+  assert.equal(msg.threadTs, undefined)
 })
