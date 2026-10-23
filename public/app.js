@@ -73,7 +73,7 @@ async function busy(btn, fn) {
 
 // ---------- state ----------
 let catalog, me, embed
-const state = { tags: new Set(), companies: new Set(), frequency: 'daily', digestTime: '09:00', digestDay: 1, learning: false, channel: null, fields: {}, labels: {}, app: null, feedTab: 'queued', quiet: { enabled: false, start: '22:00', end: '08:00' }, mute: [] }
+const state = { tags: new Set(), companies: new Set(), frequency: 'daily', digestTime: '09:00', digestDay: 1, learning: false, channel: null, fields: {}, labels: {}, app: null, feedTab: 'queued', quiet: { enabled: false, start: '22:00', end: '08:00' }, mute: [], watch: [], language: 'en' }
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const HEAD = {
@@ -149,20 +149,27 @@ function renderInterests() {
   $('#learning').checked = state.learning
   $('#learning').onchange = (e) => (state.learning = e.target.checked)
   count()
-  renderMute()
-  $('#mute-form').onsubmit = (e) => {
-    e.preventDefault()
-    const words = $('#mute-input').value.split(',').map((w) => w.trim().toLowerCase()).filter((w) => w.length >= 2)
-    state.mute = [...new Set([...state.mute, ...words])].slice(0, 30)
-    $('#mute-input').value = ''
-    renderMute()
-  }
+  wordList('mute', 'Nothing muted.')
+  wordList('watch', 'Nothing on your watchlist yet.')
+  $('#language').innerHTML = catalog.languages.map((l) => `<option value="${l.id}" ${state.language === l.id ? 'selected' : ''}>${esc(l.label)}</option>`).join('')
+  $('#language').onchange = (e) => (state.language = e.target.value)
 }
-function renderMute() {
-  $('#mute-list').innerHTML = state.mute.length
-    ? state.mute.map((w) => `<span class="mute-chip">${esc(w)}<button type="button" data-unmute="${esc(w)}" aria-label="Unmute ${esc(w)}">${icon('x')}</button></span>`).join('')
-    : '<span class="hint">Nothing muted.</span>'
-  for (const b of $$('[data-unmute]')) b.onclick = () => { state.mute = state.mute.filter((w) => w !== b.dataset.unmute); renderMute() }
+// an editable list of words (mute words, watchlist): type one or several separated by commas, remove with ×
+function wordList(key, empty) {
+  const draw = () => {
+    $(`#${key}-list`).innerHTML = state[key].length
+      ? state[key].map((w, i) => `<span class="mute-chip">${esc(w)}<button type="button" data-i="${i}" aria-label="Remove ${esc(w)}">${icon('x')}</button></span>`).join('')
+      : `<span class="hint">${empty}</span>`
+    for (const b of $$(`#${key}-list [data-i]`)) b.onclick = () => { state[key].splice(+b.dataset.i, 1); draw() }
+  }
+  $(`#${key}-form`).onsubmit = (e) => {
+    e.preventDefault()
+    const words = $(`#${key}-input`).value.split(',').map((w) => w.trim().toLowerCase()).filter((w) => w.length >= 2)
+    state[key] = [...new Set([...state[key], ...words])].slice(0, 30)
+    $(`#${key}-input`).value = ''
+    draw()
+  }
+  draw()
 }
 
 // ---------- schedule ----------
@@ -395,7 +402,7 @@ const saved = {} // steps saved during setup, for the checkmarks in the menu
 async function saveProfile() {
   const r = await api('/api/profile', {
     tags: [...state.tags], companies: [...state.companies], frequency: state.frequency, learningMode: state.learning,
-    digestTime: state.digestTime, digestDay: state.digestDay, timezone: TZ, quietHours: state.quiet, muteWords: state.mute
+    digestTime: state.digestTime, digestDay: state.digestDay, timezone: TZ, quietHours: state.quiet, muteWords: state.mute, watch: state.watch, language: state.language
   })
   return r.message
 }
@@ -471,7 +478,7 @@ async function init() {
   me.profile.companies.forEach((c) => state.companies.add(c))
   Object.assign(state, {
     frequency: me.profile.frequency, digestTime: me.profile.digestTime || '09:00', digestDay: me.profile.digestDay ?? 1, learning: !!me.profile.learningMode,
-    quiet: { ...state.quiet, ...(me.profile.quietHours || {}) }, mute: [...(me.profile.muteWords || [])],
+    quiet: { ...state.quiet, ...(me.profile.quietHours || {}) }, mute: [...(me.profile.muteWords || [])], watch: [...(me.profile.watch || [])], language: me.profile.language || 'en',
     channel: me.delivery?.channel, fields: { ...(me.delivery?.fields || {}) }, labels: { ...(me.delivery?.labels || {}) }
   })
   renderInterests()

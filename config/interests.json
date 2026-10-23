@@ -23,5 +23,5 @@
     { "id": "deepseek", "label": "DeepSeek", "keywords": ["deepseek"] },
     { "id": "xai", "label": "xAI", "keywords": ["xai", "grok"] }
   ],
-  "defaults": { "tags": ["llms", "open-source", "agents"], "companies": [], "frequency": "daily", "digestTime": "09:00", "digestDay": 1, "learningMode": false, "quietHours": { "enabled": false, "start": "22:00", "end": "08:00" }, "muteWords": [] }
+  "defaults": { "tags": ["llms", "open-source", "agents"], "companies": [], "frequency": "daily", "digestTime": "09:00", "digestDay": 1, "learningMode": false, "quietHours": { "enabled": false, "start": "22:00", "end": "08:00" }, "muteWords": [], "watch": [], "language": "en" }
 }

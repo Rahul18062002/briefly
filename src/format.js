@@ -21,10 +21,14 @@ ${concept ? `<p style="margin:0 0 4px;color:#555">💡 ${esc(concept)}</p>` : ''
 }
 
 export function instantMessage(entry, style) {
-  const subject = `Briefly: ${entry.ai.headline}`
+  const watch = entry.ai.watch // a watchlist match is sent right away, whatever its rank
+  const subject = watch ? `Briefly watchlist: ${watch} · ${entry.ai.headline}` : `Briefly: ${entry.ai.headline}`
+  const why = watch ? `Sent right away because it mentions “${esc(watch)}”, which is on your watchlist.` : 'Sent right away because it’s a major update that matches your interests.'
   if (style === 'email')
-    return { subject, body: `<div style="font-family:system-ui,sans-serif;max-width:600px">${itemText(entry, style)}<p style="color:#888;font-size:12px;margin-top:20px">Sent right away because it's a major update that matches your interests.</p></div>` }
-  const prefix = style === 'slack' ? ':zap: *Briefly: major update*' : '⚡ **Briefly: major update**'
+    return { subject, body: `<div style="font-family:system-ui,sans-serif;max-width:600px">${itemText(entry, style)}<p style="color:#888;font-size:12px;margin-top:20px">${why}</p></div>` }
+  const prefix = watch
+    ? (style === 'slack' ? `:eyes: *Briefly watchlist: ${watch}*` : `👀 **Briefly watchlist: ${watch}**`)
+    : (style === 'slack' ? ':zap: *Briefly: major update*' : '⚡ **Briefly: major update**')
   return { subject, body: `${prefix}\n${itemText(entry, style)}` }
 }
 

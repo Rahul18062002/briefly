@@ -80,6 +80,8 @@ function describe(event, items) {
 }
 
 /** Scores and summarizes events for one user, in batches. Returns { [eventId]: result }. */
+export const LANGUAGES = { en: 'English', hi: 'Hindi', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', ja: 'Japanese' }
+
 export async function assess(userId, profile, events, itemsById, learned) {
   const interests = profile.tags.map((t) => tagById(t)?.label).filter(Boolean)
   const follows = profile.companies.map((c) => companyById(c)?.label).filter(Boolean)
@@ -91,6 +93,8 @@ export async function assess(userId, profile, events, itemsById, learned) {
       follows.length ? `Companies the reader follows closely (raise relevance for news about them): ${follows.join('; ')}.` : '',
       learned?.liked?.length ? `Stories this reader liked (rate similar ones higher): ${learned.liked.join(' | ')}.` : '',
       learned?.disliked?.length ? `Stories this reader disliked (rate similar ones lower): ${learned.disliked.join(' | ')}.` : '',
+      profile.language && profile.language !== 'en' && LANGUAGES[profile.language]
+        ? `Write headline, summary, why_it_matters and concept in ${LANGUAGES[profile.language]}. Keep "topic" exactly as given above, in English.` : '',
       `Learning mode: ${profile.learningMode ? 'ON - fill "concept" with one plain explanation of the main idea a learner would need' : 'OFF - leave "concept" empty'}.`,
       '',
       ...batch.map((e) => describe(e, e.itemIds.map((id) => itemsById[id]).filter(Boolean)) + '\n---')

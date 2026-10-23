@@ -141,6 +141,18 @@
         </form>
         <div class="mute-list" id="mute-list"></div>
       </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Watchlist</h2><span class="hint">An alert the moment any story mentions one of these</span></div>
+        <form class="mute-form" id="watch-form">
+          <input class="input" id="watch-input" maxlength="40" placeholder="e.g. llama 5, gpt-6, vllm, swe-bench">
+          <button class="btn ghost" type="submit">Add</button>
+        </form>
+        <div class="mute-list watch" id="watch-list"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Summary language</h2><span class="hint">Headlines and summaries are written in this language</span></div>
+        <label class="select-wrap"><span data-icon="globe"></span><select id="language"></select></label>
+      </div>
       <div class="page-actions"><button class="btn primary" data-save="interests">Save</button></div>
     </section>
 

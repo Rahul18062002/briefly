@@ -3,6 +3,7 @@ import { viasocket } from './viasocket.js'
 import { load, save, userEvents } from './store.js'
 import { engine } from './config.js'
 import { terms } from './dedup.js'
+import { LANGUAGES } from './relevance.js'
 
 const SOURCE_NAMES = { hackernews: 'Hacker News', arxiv: 'arXiv', github: 'GitHub', blogs: 'Official blog' }
 const DAYS = 30
@@ -74,7 +75,7 @@ export async function ask(user, question, { newChat = false } = {}) {
     const { content } = await viasocket.user(user.id).ai.send({
       threadId: user.askThread,
       message: `Question: ${question}\n\nStories:\n${stories}`,
-      prompt: PROMPT,
+      prompt: PROMPT + (LANGUAGES[user.profile.language] && user.profile.language !== 'en' ? `\nAnswer in ${LANGUAGES[user.profile.language]}.` : ''),
       responseType: 'json_schema',
       jsonSchema: SCHEMA,
       service: engine.ai.service,

@@ -57,9 +57,12 @@ export async function processUser(user, { since } = {}) {
     if (word) seen[e.id] = { status: 'skipped', reason: `muted: ${word}`, at: new Date().toISOString() }
     return !word
   })
+  // watchlist words: a story that mentions one always goes through, first in line, and is sent right away
+  const watched = Object.fromEntries(unmuted.map((e) => [e.id, mutedBy(e, user.profile.watch || [])]).filter(([, w]) => w))
   const scored = unmuted.map((e) => ({ e, k: keywordScore(e, user.profile, user.learned) }))
-  for (const { e, k } of scored) if (k.score === 0) seen[e.id] = { status: 'skipped', reason: 'no interest matched', at: new Date().toISOString() }
-  const candidates = scored.filter((s) => s.k.score > 0).sort((a, b) => b.k.score - a.k.score).slice(0, engine.maxCandidatesPerRun)
+  for (const { e, k } of scored) if (k.score === 0 && !watched[e.id]) seen[e.id] = { status: 'skipped', reason: 'no interest matched', at: new Date().toISOString() }
+  const candidates = scored.filter((s) => s.k.score > 0 || watched[s.e.id])
+    .sort((a, b) => !!watched[b.e.id] - !!watched[a.e.id] || b.k.score - a.k.score).slice(0, engine.maxCandidatesPerRun)
   if (!candidates.length) { save(); return { assessed: 0, instant: 0, queued: 0 } }
 
   let results = {}
@@ -75,8 +78,9 @@ export async function processUser(user, { since } = {}) {
   for (const { e, k } of candidates) {
     const ai = results[e.id] || (fallback ? fallbackAssessment(e, k, e.itemIds.map((id) => db.items[id]).filter(Boolean)) : null)
     if (!ai) continue // left for the next run, never dropped
+    if (watched[e.id]) ai.watch = watched[e.id]
     const record = { ai, at: new Date().toISOString() }
-    const mode = decide(ai, user.profile)
+    const mode = watched[e.id] ? 'instant' : decide(ai, user.profile)
     if (mode === 'skip') { seen[e.id] = { ...record, status: 'skipped', reason: 'low relevance' }; continue }
     seen[e.id] = { ...record, status: 'queued', mode }
     mode === 'instant' ? instant++ : queued++

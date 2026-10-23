@@ -7,6 +7,7 @@ import { ensureEnabled, options, send } from './src/delivery.js'
 import { runCycle, runDigests, processUser, deliverDigest, pollSources } from './src/pipeline.js'
 import { digestMessage } from './src/format.js'
 import { learn } from './src/learning.js'
+import { LANGUAGES } from './src/relevance.js'
 import { ask, chatLog } from './src/ask.js'
 import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure } from './src/auth.js'
 import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
@@ -96,6 +97,7 @@ app.get('/api/catalog', async (req, res, next) => {
         { id: 'weekly', label: 'Weekly roundup', blurb: 'One roundup a week, on the day and time you choose.' }
       ],
       weekdays: WEEKDAYS,
+      languages: Object.entries(LANGUAGES).map(([id, label]) => ({ id, label })),
       apps: await Promise.all(allowedApps.map(appInfo)),
       channels: delivery.channels.map(({ id, app, label, hint, pick = [], ask = [] }) => ({ id, app, label, hint, pick, ask }))
     })
@@ -117,7 +119,7 @@ app.get('/api/me', async (req, res, next) => {
     res.json({
       account: req.account,
       onboarded: user.onboarded,
-      profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], ...user.profile },
+      profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], watch: [], language: 'en', ...user.profile },
       learned: { votes: user.learned?.votes || 0 },
       schedule: { text: scheduleText(user.profile), next: nextDigestLabel(user.profile) },
       delivery: user.delivery,
@@ -128,7 +130,7 @@ app.get('/api/me', async (req, res, next) => {
 
 app.post('/api/profile', (req, res) => {
   const user = currentUser(req)
-  const { tags, companies, frequency, learningMode, digestTime, digestDay, timezone, quietHours, muteWords } = req.body
+  const { tags, companies, frequency, learningMode, digestTime, digestDay, timezone, quietHours, muteWords, watch, language } = req.body
   const validTags = (tags || []).filter((t) => tagById(t))
   if (!validTags.length) return res.status(400).json({ error: 'Pick at least one interest.' })
   user.profile = {
@@ -144,14 +146,18 @@ app.post('/api/profile', (req, res) => {
       : user.profile.quietHours || { enabled: false, start: '22:00', end: '08:00' },
     muteWords: Array.isArray(muteWords)
       ? [...new Set(muteWords.map((w) => String(w).trim().toLowerCase()).filter((w) => w.length >= 2 && w.length <= 40))].slice(0, 30)
-      : user.profile.muteWords || []
+      : user.profile.muteWords || [],
+    watch: Array.isArray(watch)
+      ? [...new Set(watch.map((w) => String(w).trim().toLowerCase()).filter((w) => w.length >= 2 && w.length <= 40))].slice(0, 30)
+      : user.profile.watch || [],
+    language: LANGUAGES[language] ? language : user.profile.language || 'en'
   }
   putUser(user)
   const names = validTags.map((t) => tagById(t).label)
   const follow = user.profile.companies.map((c) => companyById(c).label)
   res.json({
     ok: true,
-    message: `Saved. You’re following ${names.join(', ')}${follow.length ? `, and keeping a close eye on ${follow.join(', ')}` : ''}. ${scheduleText(user.profile)}${user.profile.learningMode ? ' Each item will include a short plain-language explanation.' : ''}${user.profile.quietHours.enabled ? ` No instant alerts between ${formatTime(user.profile.quietHours.start)} and ${formatTime(user.profile.quietHours.end)}.` : ''}${user.profile.muteWords.length ? ` Muted: ${user.profile.muteWords.join(', ')}.` : ''}`
+    message: `Saved. You’re following ${names.join(', ')}${follow.length ? `, and keeping a close eye on ${follow.join(', ')}` : ''}. ${scheduleText(user.profile)}${user.profile.learningMode ? ' Each item will include a short plain-language explanation.' : ''}${user.profile.quietHours.enabled ? ` No instant alerts between ${formatTime(user.profile.quietHours.start)} and ${formatTime(user.profile.quietHours.end)}.` : ''}${user.profile.muteWords.length ? ` Muted: ${user.profile.muteWords.join(', ')}.` : ''}${user.profile.watch.length ? ` Watching: ${user.profile.watch.join(', ')}.` : ''}${user.profile.language !== 'en' ? ` Summaries in ${LANGUAGES[user.profile.language]}.` : ''}`
   })
 })
 

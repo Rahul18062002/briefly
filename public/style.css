@@ -344,3 +344,4 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
   .auth-pitch ul, .auth-foot { display: none; }
   .account { padding: 0; } .account .who { display: none; }
 }
+.mute-list.watch .mute-chip { border-color: color-mix(in srgb, var(--gold) 45%, transparent); background: var(--gold-soft); }
