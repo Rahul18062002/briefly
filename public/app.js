@@ -489,7 +489,33 @@ function hbars(rows, caption) {
       <span class="hbar-delta">${delta(r.change)}</span></div>`).join('') +
     srTable(caption, ['Name', 'This week', 'Last week'], rows.map((r) => [r.label, r.thisWeek, r.lastWeek]))
 }
+function drawAnalysis(a, busyNow = false) {
+  const box = $('#analysis')
+  if (busyNow) { box.innerHTML = `<div class="analysis-empty">${icon('sparkles')}<b>Writing this week’s analysis…</b><span>This takes about half a minute.</span></div>`; return }
+  if (!a) {
+    box.innerHTML = `<div class="analysis-empty">${icon('sparkles')}<b>This week, in brief</b><span>The AI reads the week’s stories and writes the 3 trends that matter for you, with sources.</span><button class="btn primary" id="analysis-go">${icon('sparkles')}Write this week’s analysis</button></div>`
+  } else {
+    box.innerHTML = `<div class="analysis-head"><span class="eyebrow">This week, in brief · ${esc(a.week)}</span><button class="btn ghost" id="analysis-go" title="At most once an hour">${icon('refresh')}Refresh</button></div>
+      <h2 class="analysis-title">${esc(a.title)}</h2><p class="analysis-overview">${esc(a.overview)}</p>
+      <ol class="analysis-trends">${a.trends.map((t) => `<li><b>${esc(t.name)}</b><p>${esc(t.what_changed)}</p><p class="why"><b>Why it matters:</b> ${esc(t.why_it_matters)}</p>
+        ${t.sources.length ? `<div class="cites">${t.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener"><span class="cite-n">${s.n}</span><span class="cite-t">${esc(s.title)}</span></a>`).join('')}</div>` : ''}</li>`).join('')}</ol>
+      ${a.watch.length ? `<p class="analysis-watch">${icon('clock')}<b>Watch next week:</b> ${a.watch.map(esc).join(' · ')}</p>` : ''}
+      <p class="hint">Written by AI from ${a.storyCount} stories Briefly collected this week. Also opens your weekly roundup.</p>`
+  }
+  $('#analysis-go').onclick = async (e) => {
+    const btn = e.currentTarget
+    btn.disabled = true
+    drawAnalysis(null, true)
+    try {
+      const r = await api('/api/analysis', {})
+      drawAnalysis(r.analysis)
+      if (r.reused) toast('Already up to date: Briefly refreshes the analysis at most once an hour.')
+    } catch (err) { toast(err.message, true); drawAnalysis(a) }
+  }
+}
+
 async function renderTrends() {
+  api('/api/analysis').then((r) => drawAnalysis(r.analysis)).catch(() => drawAnalysis(null))
   const t = await api('/api/trends')
   const top = t.topics[0], rise = t.rising[0]
   $('#trend-stats').innerHTML = [

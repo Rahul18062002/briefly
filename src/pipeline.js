@@ -10,6 +10,7 @@ import { channelById } from './config.js'
 import { digestDue, inQuietHours } from './schedule.js'
 import { mutedBy } from './learning.js'
 import { recordSent } from './replies.js'
+import { weeklyAnalysis } from './analysis.js'
 
 const log = (...a) => console.log(new Date().toISOString(), ...a)
 
@@ -136,7 +137,9 @@ export async function deliverDigest(user, period, slot) {
   }
   const entries = ids.map((id) => ({ event: db.events[id], ai: seen[id].ai }))
   try {
-    const parts = digestMessage(entries, channel.format, period)
+    // a weekly roundup opens with the AI's analysis of the week (left out if the AI is unavailable)
+    const analysis = period === 'weekly' ? await weeklyAnalysis(user).then((a) => (a.empty ? null : a)).catch(() => null) : null
+    const parts = digestMessage(entries, channel.format, period, undefined, analysis)
     const result = await send(user, parts)
     recordSent(user, result, parts.ids) // so a reply can say "explain 3"
     for (const id of ids) Object.assign(seen[id], { status: 'sent', sentAt: new Date().toISOString() })

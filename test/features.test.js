@@ -125,3 +125,19 @@ test('GitHub releases feed (used when the API is refused): newest stable release
     assert.equal(item.signal.via, 'atom')
   } finally { globalThis.fetch = real }
 })
+
+test('weekly analysis: ISO week keys, and a long analysis keeps every Discord message under 2000 characters', async () => {
+  const { weekKey } = await import('../src/analysis.js')
+  assert.equal(weekKey(Date.parse('2026-10-23T10:00:00Z')), '2026-W43')
+  assert.equal(weekKey(Date.parse('2026-01-01T10:00:00Z')), '2026-W01')
+  assert.equal(weekKey(Date.parse('2027-01-01T10:00:00Z')), '2026-W53')
+  const { digestMessage } = await import('../src/format.js')
+  const long = 'x'.repeat(600)
+  const analysis = { title: 'A week of agents', overview: long, trends: [1, 2, 3].map((n) => ({ name: `Trend ${n}`, what_changed: long, why_it_matters: 'Because.', sources: [{ n, url: `https://x.dev/${n}` }] })), watch: ['GPT-6', 'vLLM 0.33'] }
+  const entries = [1, 2].map((i) => ({ event: { id: `e${i}`, url: `https://x/${i}`, sources: ['github'] }, ai: { relevance: 80, topic: 'LLMs', headline: `Story ${i}`, summary: 'S', why_it_matters: 'W', concept: '' } }))
+  const parts = digestMessage(entries, 'discord', 'weekly', 6, analysis)
+  for (const p of parts) assert.ok(p.body.length <= 2000, `${p.body.length}`)
+  const all = parts.map((p) => p.body).join('\n')
+  assert.ok(all.includes('A week of agents') && all.includes('Watch next week') && all.includes('1. Story'))
+  assert.ok(all.indexOf('A week of agents') < all.indexOf('1. Story')) // the analysis opens the roundup
+})

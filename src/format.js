@@ -46,7 +46,23 @@ function quickLine(entry, style) {
  * A digest: the most relevant items in full (summary, why it matters, link), grouped by topic, then every
  * other item as one line under "Also worth a look". Usually one or two messages; no item is left out.
  */
-export function digestMessage(entries, style, period, topCount = engine.digestTopStories) {
+/** The weekly AI analysis as the opening section of a roundup. */
+function analysisText(a, style) {
+  if (style === 'email') return `<div style="background:#f6f1e7;border-radius:12px;padding:16px 18px;margin:12px 0 8px">
+<h2 style="margin:0 0 6px;font-size:17px">${esc(a.title)}</h2><p style="margin:0 0 10px">${esc(a.overview)}</p>
+${a.trends.map((t, i) => `<p style="margin:0 0 8px"><b>${i + 1}. ${esc(t.name)}.</b> ${esc(t.what_changed)} <i>${esc(t.why_it_matters)}</i>${t.sources.length ? ` ${t.sources.map((s) => `<a href="${esc(s.url)}">[${s.n}]</a>`).join(' ')}` : ''}</p>`).join('')}
+${a.watch.length ? `<p style="margin:8px 0 0;color:#555"><b>Watch next week:</b> ${a.watch.map(esc).join(' · ')}</p>` : ''}</div>`
+  const b = style === 'slack' ? (x) => `*${x}*` : (x) => `**${x}**`
+  const i = style === 'slack' ? (x) => `_${x}_` : (x) => `*${x}*`
+  const link = style === 'slack' ? (u) => u : (u) => `<${u}>`
+  return [
+    `${style === 'slack' ? ':crystal_ball:' : '🔮'} ${b(a.title)}`, a.overview,
+    ...a.trends.map((t, n) => `${b(`${n + 1}. ${t.name}`)}: ${t.what_changed} ${i(t.why_it_matters)}${t.sources[0] ? ` ${link(t.sources[0].url)}` : ''}`),
+    a.watch.length ? `${b('Watch next week:')} ${a.watch.join(' · ')}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+export function digestMessage(entries, style, period, topCount = engine.digestTopStories, analysis = null) {
   const sorted = [...entries].sort((a, b) => b.ai.relevance - a.ai.relevance)
   const top = sorted.slice(0, topCount), rest = sorted.slice(topCount)
   const groups = {}
@@ -61,18 +77,21 @@ export function digestMessage(entries, style, period, topCount = engine.digestTo
     const h2 = (text) => `<h2 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#666;border-bottom:1px solid #eee;padding-bottom:4px;margin-top:28px">${esc(text)}</h2>`
     const html = Object.entries(groups).map(([topic, list]) => `${h2(topic)}${list.map((e) => itemText(e, style)).join('')}`).join('') +
       (rest.length ? `${h2('Also worth a look')}<ul style="padding-left:18px">${rest.map((e) => quickLine(e, style)).join('')}</ul>` : '')
-    return Object.assign([{ subject: title, body: `<div style="font-family:system-ui,sans-serif;max-width:600px"><h1 style="font-size:20px">${esc(title)}</h1>${html}</div>` }], { ids })
+    return Object.assign([{ subject: title, body: `<div style="font-family:system-ui,sans-serif;max-width:600px"><h1 style="font-size:20px">${esc(title)}</h1>${analysis ? analysisText(analysis, style) : ''}${html}</div>` }], { ids })
   }
   const heading = (text) => (style === 'slack' ? `*${text.toUpperCase()}*` : `__**${text}**__`)
   // Pieces are never split; a blank line separates sections and full items, a line break separates quick lines.
   const pieces = [{ text: style === 'slack' ? `:newspaper: *${title}*` : `📰 **${title}**` }]
+  if (analysis) pieces.push({ text: analysisText(analysis, style) }) // the week in brief opens a weekly roundup
   for (const [topic, list] of Object.entries(groups)) pieces.push({ text: heading(topic) }, ...list.map((e) => ({ text: itemText(e, style) })))
   if (rest.length) pieces.push({ text: heading('Also worth a look') }, ...rest.map((e, i) => ({ text: quickLine(e, style), tight: i > 0 })))
   // Discord caps a message at 2000 characters and long Slack messages get cut up: split between pieces only.
   const limit = style === 'discord' ? 1900 : 3800
   const parts = []
   let current = ''
-  for (const { text, tight } of pieces) {
+  // a piece longer than one message (a long analysis on Discord) is split between its lines
+  const fitted = pieces.flatMap((p) => (p.text.length <= limit ? [p] : p.text.split('\n').map((line, i) => ({ text: line.slice(0, limit), tight: i > 0 || p.tight }))))
+  for (const { text, tight } of fitted) {
     const joined = current ? current + (tight ? '\n' : '\n\n') + text : text
     if (current && joined.length > limit) { parts.push(current); current = text } else current = joined
   }

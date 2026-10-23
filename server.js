@@ -10,6 +10,7 @@ import { digestMessage } from './src/format.js'
 import { learn } from './src/learning.js'
 import { LANGUAGES } from './src/relevance.js'
 import { computeTrends } from './src/trends.js'
+import { weeklyAnalysis, weekKey } from './src/analysis.js'
 import { enableReplies, disableReplies, checkSecret, handleReply, replyChannel } from './src/replies.js'
 import { ask, chatLog } from './src/ask.js'
 import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure, setContext, accountByEmail, accountById } from './src/auth.js'
@@ -405,6 +406,22 @@ app.post('/api/workspace', teamRoute((req) => {
 app.get('/api/trends', (req, res) => {
   const user = currentUser(req)
   res.json(computeTrends(load().events, { tz: validTimeZone(user.profile.timezone) ? user.profile.timezone : 'UTC', profile: user.profile }))
+})
+
+// Weekly AI analysis: the saved one for this week (GET), or a fresh one (POST; at most once an hour)
+app.get('/api/analysis', (req, res) => {
+  const a = currentUser(req).analysis
+  res.json({ analysis: a?.week === weekKey() ? a : null })
+})
+app.post('/api/analysis', async (req, res, next) => {
+  try {
+    const user = getUser(req.userId)
+    if (!user?.onboarded) return res.status(400).json({ error: 'Finish setup first.' })
+    const before = user.analysis?.generatedAt
+    const a = await weeklyAnalysis(user, { force: true })
+    if (a.empty) return res.status(400).json({ error: 'Not enough stories this week yet. Check back after a day or two of news.' })
+    res.json({ analysis: a, reused: a.generatedAt === before })
+  } catch (e) { next(e) }
 })
 
 // Ask Briefly
