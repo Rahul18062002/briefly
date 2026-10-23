@@ -1,0 +1,14 @@
+{
+  "actions": [
+    {
+      "id": "sheets", "app": "google-sheets", "appName": "Google Sheets", "label": "Google Sheets",
+      "verb": "Save to Sheets",
+      "hint": "Each saved story becomes a row. Give the sheet these headers in row 1: Date, Headline, Topic, Summary, Link, Source.",
+      "action": "rowfudy5tu2q", "version": "V15",
+      "pick": [
+        { "key": "spreadSheet_Id", "label": "Spreadsheet" },
+        { "key": "sheet_id", "label": "Sheet", "after": "spreadSheet_Id" }
+      ]
+    }
+  ]
+}

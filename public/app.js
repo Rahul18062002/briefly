@@ -37,7 +37,8 @@ const ICONS = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
-  trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>'
+  trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>'
 }
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.sparkles}</svg>`
 const paintIcons = (root = document) => $$('[data-icon]', root).forEach((el) => { el.innerHTML = icon(el.dataset.icon) })
@@ -234,12 +235,12 @@ function renderApps() {
   }
 }
 
-async function connectApp(slug, authId, btn) {
+async function connectApp(slug, authId, btn, after = chooseApp) {
   const save = async (id) => {
     const r = await api('/api/viasocket/connected', { app: slug, authId: id })
     toast(r.message)
     me = await api('/api/me')
-    chooseApp(slug)
+    after(slug)
   }
   btn.disabled = true
   try {
@@ -312,6 +313,52 @@ function renderFields() {
   }
 }
 
+// ---------- save stories to (one-click actions) ----------
+function renderSaveTargets() {
+  $('#save-targets').innerHTML = catalog.actions.map((a) => {
+    const c = me.connections[a.app], t = me.saveTargets?.[a.id]
+    const where = t ? Object.values(t.labels || {}).flat().join(' › ') : ''
+    const state = t ? `<span class="app-state ok">Saving to ${esc(where || a.label)}</span>` : c && !c.expired ? '<span class="app-state">Connected · choose where</span>' : '<span class="app-state">Not connected</span>'
+    const label = !c || c.expired ? `${icon('plug')}Connect ${esc(a.label)}` : t ? 'Change' : 'Choose where'
+    return `<div class="app-tile ${t ? 'on' : ''}"><span class="app-logo">${appIcon({ icon: a.icon, name: a.label })}</span><div><b>${esc(a.label)}</b><br>${state}</div><button class="btn ${c && !c.expired ? 'ghost' : 'primary'}" data-target="${a.id}">${label}</button></div>`
+  }).join('')
+  for (const b of $$('[data-target]')) {
+    const a = catalog.actions.find((x) => x.id === b.dataset.target), c = me.connections[a.app]
+    b.onclick = () => (c && !c.expired ? chooseTarget(a) : connectApp(a.app, c?.expired ? c.authId : undefined, b, () => { renderSaveTargets(); chooseTarget(a) }))
+  }
+}
+function chooseTarget(a) {
+  const chosen = {}, labels = {}
+  const box = $('#target-box')
+  box.innerHTML = `<p class="hint target-hint">${esc(a.hint)}</p>` + a.pick.map((p) => `<div class="field"><label>${esc(p.label)}</label><select data-pick="${p.key}" ${p.after ? 'disabled' : ''}><option value="">${p.after ? 'Choose the ' + esc(a.pick.find((x) => x.key === p.after).label.toLowerCase()) + ' first' : 'Loading…'}</option></select></div>`).join('') +
+    `<div class="page-actions"><button class="btn primary" id="target-save">Save</button></div>`
+  const load = async (p) => {
+    const sel = $(`[data-pick="${p.key}"]`)
+    sel.disabled = true
+    sel.innerHTML = '<option value="">Loading…</option>'
+    try {
+      const { options } = await api(`/api/action-options?action=${a.id}&key=${encodeURIComponent(p.key)}&existing=${encodeURIComponent(JSON.stringify(chosen))}`)
+      sel.innerHTML = '<option value="">Choose…</option>' + options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+      sel.disabled = false
+    } catch (e) { sel.innerHTML = `<option value="">${esc(e.message)}</option>` }
+  }
+  for (const p of a.pick) {
+    $(`[data-pick="${p.key}"]`).onchange = (e) => {
+      chosen[p.key] = e.target.value
+      labels[p.key] = e.target.selectedOptions[0]?.textContent
+      for (const next of a.pick.filter((x) => x.after === p.key)) { delete chosen[next.key]; delete labels[next.key]; if (e.target.value) load(next) }
+    }
+  }
+  a.pick.filter((p) => !p.after).forEach(load)
+  $('#target-save').onclick = (e) => busy(e.currentTarget, async () => {
+    const r = await api('/api/save-target', { action: a.id, fields: chosen, labels })
+    toast(r.message)
+    me = await api('/api/me')
+    box.innerHTML = ''
+    renderSaveTargets()
+  })
+}
+
 // ---------- briefing ----------
 function story(r) {
   const tag = catalog.tags.find((t) => t.label === r.topic)
@@ -322,7 +369,7 @@ function story(r) {
     <h3>${esc(r.headline)}</h3><p>${esc(r.summary)}</p><p class="why"><b>Why it matters:</b> ${esc(r.why_it_matters)}</p>
     ${r.concept ? `<div class="concept">${icon('book')}<span>${esc(r.concept)}</span></div>` : ''}
     <div class="story-foot"><div class="pills">${sources}</div><div class="foot-right">
-      <span class="votes"><button class="vote ${r.vote > 0 ? 'on' : ''}" data-vote="1" data-id="${esc(r.id)}" title="More like this" aria-pressed="${r.vote > 0}">${icon('up')}</button><button class="vote down ${r.vote < 0 ? 'on' : ''}" data-vote="-1" data-id="${esc(r.id)}" title="Fewer like this" aria-pressed="${r.vote < 0}">${icon('down')}</button></span>
+      <span class="votes">${catalog.actions.filter((a) => me.saveTargets?.[a.id]).map((a) => `<button class="vote save ${r.savedTo.includes(a.id) ? 'on' : ''}" data-save-story="${esc(r.id)}" data-action="${a.id}" title="${esc(a.verb)}" aria-label="${esc(a.verb)}">${icon('bookmark')}</button>`).join('')}<button class="vote ${r.vote > 0 ? 'on' : ''}" data-vote="1" data-id="${esc(r.id)}" title="More like this" aria-pressed="${r.vote > 0}">${icon('up')}</button><button class="vote down ${r.vote < 0 ? 'on' : ''}" data-vote="-1" data-id="${esc(r.id)}" title="Fewer like this" aria-pressed="${r.vote < 0}">${icon('down')}</button></span>
       <a class="read" href="${esc(r.url)}" target="_blank" rel="noopener">Read the source ${icon('arrow')}</a></div></div>
   </div></article>`
 }
@@ -333,6 +380,12 @@ function renderFeedList() {
   const empty = { queued: 'Nothing waiting yet. New stories show up here after the next check.', instant: 'No major launches sent yet. When something big lands, it arrives right away.', digested: 'No digest delivered yet.' }[state.feedTab]
   $('#feed-list').innerHTML = rows.length ? rows.map(story).join('') : `<div class="empty">${icon('inbox')}<span>${empty}</span></div>`
   for (const b of $$('#feed-tabs button')) b.classList.toggle('on', b.dataset.tab === state.feedTab)
+  for (const b of $$('[data-save-story]')) b.onclick = () => busy(b, async () => {
+    const item = feed.items.find((r) => r.id === b.dataset.saveStory)
+    toast((await api(`/api/stories/${encodeURIComponent(item.id)}/save`, { action: b.dataset.action })).message)
+    item.savedTo = [...new Set([...item.savedTo, b.dataset.action])]
+    renderFeedList()
+  })
   for (const b of $$('[data-vote]')) b.onclick = async () => {
     const item = feed.items.find((r) => r.id === b.dataset.id)
     const vote = item.vote === +b.dataset.vote ? 0 : +b.dataset.vote // clicking again removes the rating
@@ -530,6 +583,7 @@ async function init() {
   renderInterests()
   renderSchedule()
   renderApps()
+  renderSaveTargets()
   if (state.channel) chooseApp(catalog.channels.find((c) => c.id === state.channel).app)
   $('#test').hidden = !me.delivery?.ready
   $('#test').onclick = (e) => busy(e.currentTarget, async () => toast((await api('/api/test-message', {})).message))

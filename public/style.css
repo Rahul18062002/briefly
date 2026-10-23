@@ -378,3 +378,6 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
 .chart-tip { position: fixed; z-index: 40; transform: translate(-50%, -100%); padding: 6px 10px; border-radius: 8px; background: var(--raise); border: 1px solid var(--line-2); box-shadow: var(--shadow); font-size: 12px; pointer-events: none; white-space: nowrap; }
 @media (max-width: 1180px) { .split.even { grid-template-columns: 1fr; } }
 @media (max-width: 860px) { .trend-stats { grid-template-columns: 1fr; } .dcol small { display: none; } .hbar { grid-template-columns: minmax(90px, 38%) minmax(0, 1fr) 64px; } }
+.vote.save.on { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+.target-hint { margin: 16px 0 0; }
+#target-box .field select { max-width: 420px; }

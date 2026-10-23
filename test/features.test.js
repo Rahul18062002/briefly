@@ -91,3 +91,14 @@ test('trend radar: daily counts, topics and companies week over week, rising wor
   assert.equal(t.companies.find((x) => x.id === 'openai').change, -1)
   assert.deepEqual(t.rising.map((r) => r.term).slice(0, 3), ['robot', 'arm', 'humanoid']) // equal rise: more mentions first; 'vacuum' fell
 })
+
+test('one-click save: a story becomes one Google Sheets row, passed as JSON', async () => {
+  const { inputFor, actionById } = await import('../src/actions.js')
+  const input = inputFor(actionById('sheets'), { spreadSheet_Id: 'S1', sheet_id: 'T1' }, { title: 'Raw', url: 'https://x.dev/a', sources: ['hackernews', 'github'] }, { headline: 'Clear headline', topic: 'AI agents', summary: 'What happened.' })
+  assert.deepEqual(Object.keys(input), ['spreadSheet_Id', 'sheet_id', 'use_json_rows', 'rows_json'])
+  assert.equal(input.use_json_rows, true)
+  const [row] = JSON.parse(input.rows_json)
+  assert.deepEqual(Object.keys(row), ['Date', 'Headline', 'Topic', 'Summary', 'Link', 'Source'])
+  assert.equal(row.Headline, 'Clear headline')
+  assert.equal(row.Source, 'hackernews, github')
+})

@@ -1,7 +1,8 @@
 import './src/env.js'
 import express from 'express'
 import { viasocket, serviceIdFor } from './src/viasocket.js'
-import { interests, delivery, engine, channelById, allowedApps, tagById, companyById } from './src/config.js'
+import { interests, delivery, actions, engine, channelById, allowedApps, appName, tagById, companyById } from './src/config.js'
+import { actionById, actionOptions, runStoryAction } from './src/actions.js'
 import { load, save, getUser, putUser, userEvents } from './src/store.js'
 import { ensureEnabled, options, send } from './src/delivery.js'
 import { runCycle, runDigests, processUser, deliverDigest, pollSources } from './src/pipeline.js'
@@ -81,7 +82,7 @@ const iconCache = {}
 async function appInfo(slug) {
   if (!iconCache[slug]) {
     const v = await viasocket.catalog.versions(await serviceIdFor(slug))
-    iconCache[slug] = { slug, name: delivery.apps[slug].name, icon: v?.service.icon_url }
+    iconCache[slug] = { slug, name: appName(slug), icon: v?.service.icon_url }
   }
   return iconCache[slug]
 }
@@ -99,7 +100,8 @@ app.get('/api/catalog', async (req, res, next) => {
       ],
       weekdays: WEEKDAYS,
       languages: Object.entries(LANGUAGES).map(([id, label]) => ({ id, label })),
-      apps: await Promise.all(allowedApps.map(appInfo)),
+      apps: await Promise.all(Object.keys(delivery.apps).map(appInfo)),
+      actions: await Promise.all(actions.actions.map(async ({ id, app, label, verb, hint, pick }) => ({ id, app, label, verb, hint, pick, icon: (await appInfo(app)).icon }))),
       channels: delivery.channels.map(({ id, app, label, hint, pick = [], ask = [] }) => ({ id, app, label, hint, pick, ask }))
     })
   } catch (e) { next(e) }
@@ -124,6 +126,7 @@ app.get('/api/me', async (req, res, next) => {
       learned: { votes: user.learned?.votes || 0 },
       schedule: { text: scheduleText(user.profile), next: nextDigestLabel(user.profile) },
       delivery: user.delivery,
+      saveTargets: Object.fromEntries(Object.entries(user.saveTargets || {}).map(([id, t]) => [id, { labels: t.labels }])),
       connections: Object.fromEntries(Object.entries(user.connections || {}).map(([slug, c]) => [slug, { connected: true, expired: expired[slug], authId: c.authId, label: c.label }]))
     })
   } catch (e) { next(e) }
@@ -170,8 +173,9 @@ app.get('/api/viasocket/token', async (req, res, next) => {
     const slugs = String(req.query.apps || '').split(',').filter(Boolean)
     if (slugs.some((s) => !allowedApps.includes(s))) return res.status(400).json({ error: 'That app is not available in Briefly.' })
     const serviceIds = Object.fromEntries(await Promise.all(slugs.map(async (slug) => [slug, await serviceIdFor(slug)])))
-    const actions = Object.fromEntries(slugs.map((s) => [s, [...new Set(delivery.channels.filter((c) => c.app === s).map((c) => c.action))]]))
-    res.json({ token: await viasocket.user(req.userId).token(), serviceIds, actions })
+    // consent asks only for the scopes of the events this product uses
+    const events = Object.fromEntries(slugs.map((s) => [s, [...new Set([...delivery.channels, ...actions.actions].filter((c) => c.app === s).map((c) => c.action))]]))
+    res.json({ token: await viasocket.user(req.userId).token(), serviceIds, actions: events })
   } catch (e) { next(e) }
 })
 
@@ -189,7 +193,7 @@ app.post('/api/viasocket/connected', async (req, res, next) => {
     user.connections[slug] = { ...user.connections[slug], authId, label, connectedAt: new Date().toISOString() }
     putUser(user)
     await ensureEnabled(user, slug)
-    res.json({ ok: true, message: `${delivery.apps[slug].name} is connected${label ? ` (${label})` : ''}.` })
+    res.json({ ok: true, message: `${appName(slug)} is connected${label ? ` (${label})` : ''}.` })
   } catch (e) { next(e) }
 })
 
@@ -240,7 +244,7 @@ app.get('/api/feed', (req, res) => {
   const db = load()
   const seen = userEvents(req.userId)
   const rows = Object.entries(seen).filter(([, s]) => s.ai && s.status !== 'skipped')
-    .map(([id, s]) => ({ id, status: s.status, mode: s.mode, at: s.sentAt || s.at, vote: s.vote || 0, ...s.ai, url: db.events[id]?.url, sources: db.events[id]?.sources }))
+    .map(([id, s]) => ({ id, status: s.status, mode: s.mode, at: s.sentAt || s.at, vote: s.vote || 0, savedTo: s.savedTo || [], ...s.ai, url: db.events[id]?.url, sources: db.events[id]?.sources }))
     .sort((a, b) => b.relevance - a.relevance)
   const deliveries = db.deliveries.filter((d) => d.userId === req.userId).slice(0, 20).map(({ kind, ok, at, eventIds, detail }) => ({ kind, ok, at, count: eventIds.length, detail: ok ? undefined : 'Delivery did not go through; it will be retried with your next digest.' }))
   const sources = Object.entries(db.sourceStatus).map(([name, s]) => ({ name, ok: s.ok, at: s.at }))
@@ -259,6 +263,42 @@ app.post('/api/feedback', (req, res) => {
   const learned = learn(user, seen, load().events)
   putUser(user)
   res.json({ ok: true, votes: learned.votes, message: vote > 0 ? 'Got it — more stories like this.' : vote < 0 ? 'Got it — fewer stories like this.' : 'Rating removed.' })
+})
+
+// One-click actions: choose once where stories go (e.g. a Google Sheet), then save any story with one click
+app.get('/api/action-options', async (req, res, next) => {
+  try {
+    const existing = JSON.parse(req.query.existing || '{}')
+    const { options: list } = await actionOptions(currentUser(req), req.query.action, req.query.key, existing, req.query.q)
+    res.json({ options: list.map(({ label, value }) => ({ label, value })) })
+  } catch (e) { next(e) }
+})
+app.post('/api/save-target', (req, res) => {
+  const user = currentUser(req)
+  const def = actionById(req.body.action)
+  if (!def) return res.status(400).json({ error: 'Unknown action.' })
+  if (!user.connections[def.app]) return res.status(400).json({ error: `Connect ${def.appName} first.` })
+  const fields = {}
+  for (const p of def.pick) {
+    const v = req.body.fields?.[p.key]
+    if (!v) return res.status(400).json({ error: `Choose: ${p.label}.` })
+    fields[p.key] = String(v)
+  }
+  user.saveTargets = { ...user.saveTargets, [def.id]: { fields, labels: req.body.labels || {} } }
+  putUser(user)
+  res.json({ ok: true, message: `Done. “${def.verb}” now adds stories to ${Object.values(req.body.labels || {}).flat().join(' › ') || def.appName}.` })
+})
+app.post('/api/stories/:id/save', async (req, res, next) => {
+  try {
+    const user = currentUser(req)
+    const seen = userEvents(user.id)[req.params.id]
+    const event = load().events[req.params.id]
+    if (!event) return res.status(404).json({ error: 'That story is no longer available.' })
+    const def = actionById(req.body.action)
+    await runStoryAction(user, req.body.action, event, seen?.ai)
+    if (seen) { seen.savedTo = [...new Set([...(seen.savedTo || []), def.id])]; save() }
+    res.json({ ok: true, message: `Saved to ${def.appName}.` })
+  } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e) }
 })
 
 // Trend radar
