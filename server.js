@@ -12,7 +12,8 @@ import { LANGUAGES } from './src/relevance.js'
 import { computeTrends } from './src/trends.js'
 import { enableReplies, disableReplies, checkSecret, handleReply, replyChannel } from './src/replies.js'
 import { ask, chatLog } from './src/ask.js'
-import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure } from './src/auth.js'
+import { COOKIE, signUp, signIn, createSession, sessionFor, endSession, changePassword, tooManyAttempts, noteFailure, setContext, accountByEmail, accountById } from './src/auth.js'
+import { createTeam, invite, accept, decline, removeMember, cancelInvite, leave, deleteTeam, teamsOf, invitesFor } from './src/teams.js'
 import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
 
 const app = express()
@@ -31,7 +32,12 @@ function setCookie(req, res, name, value, maxAge) {
 app.use((req, res, next) => {
   req.cookies = cookies(req)
   const session = sessionFor(req.cookies[COOKIE])
-  if (session) Object.assign(req, { session, account: session.account, userId: session.account.id })
+  if (session) {
+    Object.assign(req, { session, account: session.account, userId: session.account.id })
+    // working in a team: the team's workspace stands in for the user everywhere (profile, delivery, viaSocket)
+    const team = session.context && load().teams[session.context]
+    if (team?.members.includes(session.account.id)) Object.assign(req, { team, userId: team.id })
+  }
   next()
 })
 
@@ -73,6 +79,14 @@ app.post('/api/hooks/replies/:userId', (req, res) => {
 app.use('/api', (req, res, next) => {
   if (req.path === '/catalog' || req.account) return next()
   res.status(401).json({ error: 'Please sign in.', signIn: true })
+})
+
+// in a team, only its owner changes the team's settings and connections; members read, vote, ask and save stories
+const OWNER_ONLY = ['/profile', '/delivery', '/viasocket/token', '/viasocket/connected', '/options', '/save-target', '/action-options', '/replies', '/test-message', '/digest-now', '/check-now']
+app.use('/api', (req, res, next) => {
+  if (req.team && req.team.owner !== req.account.id && OWNER_ONLY.includes(req.path))
+    return res.status(403).json({ error: `Only the owner of “${req.team.name}” can change the team’s settings.` })
+  next()
 })
 
 const FREQUENCIES = ['instant', 'daily', 'weekly']
@@ -131,6 +145,7 @@ app.get('/api/me', async (req, res, next) => {
     }
     res.json({
       account: req.account,
+      workspace: req.team ? { team: true, id: req.team.id, name: req.team.name, isOwner: req.team.owner === req.account.id } : { team: false },
       onboarded: user.onboarded,
       profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], watch: [], language: 'en', ...user.profile },
       learned: { votes: user.learned?.votes || 0 },
@@ -325,6 +340,59 @@ app.post('/api/replies', async (req, res, next) => {
     res.json({ ok: true, message: 'Replies are off. Briefly will no longer read that channel.' })
   } catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); next(e) }
 })
+
+// Team workspaces
+const teamView = (t, account) => ({
+  id: t.id, name: t.name, isOwner: t.owner === account.id,
+  members: t.members.map((id) => { const a = accountById(id); return { id, name: a?.name || 'Former user', email: a?.email || '', owner: id === t.owner } }),
+  invites: t.owner === account.id ? t.invites : []
+})
+const teamRoute = (fn) => (req, res) => {
+  try { res.json(fn(req) || { ok: true }) } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong on our side.' }) }
+}
+app.get('/api/teams', teamRoute((req) => ({
+  current: req.team?.id || null,
+  teams: teamsOf(req.account.id).map((t) => teamView(t, req.account)),
+  invites: invitesFor(req.account.email).map((t) => ({ id: t.id, name: t.name, owner: accountById(t.owner)?.name || '' }))
+})))
+app.post('/api/teams', teamRoute((req) => {
+  const t = createTeam(req.account, req.body.name)
+  setContext(req.session.tokenHash, t.id)
+  return { ok: true, message: `Team “${t.name}” created. You’re now working in it: set its interests, schedule and where it delivers.` }
+}))
+app.post('/api/teams/:id/invite', teamRoute((req) => {
+  invite(req.account, req.params.id, req.body.email, (e) => accountByEmail(e)?.id)
+  return { ok: true, message: `Invitation saved. When ${String(req.body.email).trim()} signs in to Briefly with that email, they’ll see it and can join.` }
+}))
+app.post('/api/teams/:id/accept', teamRoute((req) => {
+  const t = accept(req.account, req.params.id)
+  setContext(req.session.tokenHash, t.id)
+  return { ok: true, message: `You joined “${t.name}”.` }
+}))
+app.post('/api/teams/:id/decline', teamRoute((req) => { decline(req.account, req.params.id) }))
+app.post('/api/teams/:id/remove', teamRoute((req) => {
+  if (req.body.email) cancelInvite(req.account, req.params.id, req.body.email)
+  else removeMember(req.account, req.params.id, req.body.member)
+}))
+app.post('/api/teams/:id/leave', teamRoute((req) => {
+  leave(req.account, req.params.id)
+  if (req.team?.id === req.params.id) setContext(req.session.tokenHash, null)
+  return { ok: true, message: 'You left the team.' }
+}))
+app.post('/api/teams/:id/delete', async (req, res) => {
+  try {
+    const workspace = deleteTeam(req.account, req.params.id)
+    // stop anything still running for it in viaSocket (reply watching)
+    if (workspace?.replies?.script_id) await viasocket.user(workspace.id).setFlowStatus(workspace.replies.script_id, 0).catch(() => {})
+    setContext(req.session.tokenHash, null)
+    res.json({ ok: true, message: 'Team deleted.' })
+  } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong on our side.' }) }
+})
+app.post('/api/workspace', teamRoute((req) => {
+  const id = req.body.team || null
+  if (id && !load().teams[id]?.members.includes(req.account.id)) throw Object.assign(new Error('You’re not in that team.'), { status: 403 })
+  setContext(req.session.tokenHash, id)
+}))
 
 // Trend radar
 app.get('/api/trends', (req, res) => {

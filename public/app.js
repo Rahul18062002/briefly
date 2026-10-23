@@ -38,8 +38,11 @@ const ICONS = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   trend: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
-  bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>'
+  bookmark: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 4 6"/>'
 }
+// switching workspace changes everything on screen: always a full reload (a #hash change alone would not reload)
+const reloadTo = (view = '') => { history.replaceState(null, '', `/${view ? '#' + view : ''}`); location.reload() }
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.sparkles}</svg>`
 const paintIcons = (root = document) => $$('[data-icon]', root).forEach((el) => { el.innerHTML = icon(el.dataset.icon) })
 
@@ -80,6 +83,7 @@ const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const HEAD = {
   briefing: ['Your briefing', 'What’s new for you', 'Stories picked for your interests, and what is on its way to you. Rate stories with 👍 / 👎 and Briefly learns your taste.'],
+  team: ['Teams', 'Work together', 'A team has its own interests, schedule and delivery, so a whole group gets one shared briefing. Its owner sets it up; members read, vote, ask and save.'],
   trends: ['Trend radar', 'What’s rising', 'What AI news is about this week compared with last week, counted across every source Briefly reads.'],
   ask: ['Ask Briefly', 'Ask about the news', 'Questions are answered only from the stories Briefly has collected, with a link to every source.'],
   interests: ['Step 1 · Interests', 'What should we watch?', 'Pick the topics you care about. We read Hacker News, new research papers and GitHub releases, and keep only what matches.'],
@@ -107,9 +111,11 @@ function show(view) {
   for (const p of $$('.page')) p.hidden = p.dataset.page !== view
   for (const b of $$('#nav button')) b.classList.toggle('on', b.dataset.view === view)
   const [eyebrow, title, lede] = HEAD[view]
-  $('#eyebrow').textContent = me.onboarded && !['briefing', 'ask', 'trends'].includes(view) ? 'Settings' : eyebrow
+  $('#eyebrow').textContent = me.workspace.team ? `Team · ${me.workspace.name}` : me.onboarded && !['briefing', 'ask', 'trends', 'team'].includes(view) ? 'Settings' : eyebrow
   $('#title').textContent = title
   $('#lede').textContent = lede
+  // a team member sees the team's settings but cannot change them
+  if (me.workspace.team && !me.workspace.isOwner && ['interests', 'schedule', 'delivery'].includes(view)) $('#lede').textContent = `These are the settings of “${me.workspace.name}”. Only its owner can change them.`
   $('#top-actions').innerHTML = ''
   if (view === 'briefing') {
     $('#top-actions').innerHTML = `<button class="btn ghost" id="check">${icon('refresh')}Check for news now</button><button class="btn primary" id="digest">${icon('send')}Send my digest now</button>`
@@ -117,6 +123,7 @@ function show(view) {
     $('#digest').onclick = (e) => busy(e.currentTarget, async () => { toast((await api('/api/digest-now', {})).message); await renderBriefing() })
     renderBriefing().catch((e) => toast(e.message, true))
   }
+  if (view === 'team') renderTeam().catch((e) => toast(e.message, true))
   if (view === 'trends') renderTrends().catch((e) => toast(e.message, true))
   if (view === 'ask') {
     $('#top-actions').innerHTML = `<button class="btn ghost" id="new-chat">${icon('plus')}New chat</button>`
@@ -242,6 +249,7 @@ async function connectApp(slug, authId, btn, after = chooseApp) {
     me = await api('/api/me')
     after(slug)
   }
+  if (!embed) return toast(me.workspace.team ? `Only the owner of “${me.workspace.name}” can connect apps for the team.` : 'Connecting apps isn’t available right now. Reload the page and try again.', true)
   btn.disabled = true
   try {
     // the popup opens straight from this click: the token was fetched on page load
@@ -433,6 +441,42 @@ async function renderBriefing() {
   renderFeedList()
 }
 
+// ---------- teams ----------
+let teams = { teams: [], invites: [], current: null }
+async function loadTeams() {
+  teams = await api('/api/teams')
+  $('#workspace').innerHTML = `<option value="">Personal</option>` + teams.teams.map((t) => `<option value="${t.id}" ${t.id === teams.current ? 'selected' : ''}>${esc(t.name)}</option>`).join('') + '<option value="__new">+ New team…</option>'
+  $('#workspace').onchange = async (e) => {
+    if (e.target.value === '__new') { e.target.value = teams.current || ''; return show('team') }
+    await api('/api/workspace', { team: e.target.value || null })
+    reloadTo()
+  }
+  $('#invite-badge').hidden = !teams.invites.length
+  $('#invite-badge').textContent = teams.invites.length
+}
+async function renderTeam() {
+  await loadTeams()
+  $('#team-invites').innerHTML = teams.invites.map((i) => `<div class="panel invite"><span class="toggle-ico">${icon('users')}</span><span class="toggle-text"><b>${esc(i.owner)} invited you to “${esc(i.name)}”</b><span>Join to get the team’s shared briefing.</span></span><button class="btn ghost" data-decline="${i.id}">Decline</button><button class="btn primary" data-accept="${i.id}">Join</button></div>`).join('')
+  for (const b of $$('[data-accept]')) b.onclick = () => busy(b, async () => { toast((await api(`/api/teams/${b.dataset.accept}/accept`, {})).message); reloadTo() })
+  for (const b of $$('[data-decline]')) b.onclick = () => busy(b, async () => { await api(`/api/teams/${b.dataset.decline}/decline`, {}); renderTeam() })
+  const t = teams.teams.find((x) => x.id === teams.current)
+  $('#team-current').innerHTML = !t ? (teams.teams.length ? `<div class="panel"><div class="panel-head"><h2>Your teams</h2><span class="hint">Switch with the menu under the logo</span></div><div class="team-list">${teams.teams.map((x) => `<button class="btn ghost" data-open="${x.id}">${icon('users')}${esc(x.name)}</button>`).join('')}</div></div>` : '') : `
+    <div class="panel">
+      <div class="panel-head"><h2>${esc(t.name)}</h2><span class="hint">${t.members.length} member${t.members.length === 1 ? '' : 's'}${t.isOwner ? ' · you own this team' : ''}</span></div>
+      <div class="members">${t.members.map((m) => `<div class="member"><span class="avatar">${esc((m.name || '?')[0].toUpperCase())}</span><span class="who"><b>${esc(m.name)}${m.owner ? ' <em>owner</em>' : ''}</b><small>${esc(m.email)}</small></span>${t.isOwner && !m.owner ? `<button class="link" data-remove="${m.id}">Remove</button>` : ''}</div>`).join('')}
+        ${t.invites.map((e) => `<div class="member pending"><span class="avatar">${icon('mail')}</span><span class="who"><b>${esc(e)}</b><small>Invited · joins when they sign in with this email</small></span><button class="link" data-cancel="${esc(e)}">Cancel</button></div>`).join('')}</div>
+      ${t.isOwner ? `<form class="mute-form invite-form" id="team-invite"><input class="input" id="invite-email" type="email" placeholder="colleague@company.com"><button class="btn primary" type="submit">Invite</button></form>` : ''}
+      <div class="page-actions">${t.isOwner ? `<button class="btn ghost danger" id="team-delete">Delete team</button>` : `<button class="btn ghost" id="team-leave">Leave team</button>`}</div>
+    </div>`
+  for (const b of $$('[data-open]')) b.onclick = async () => { await api('/api/workspace', { team: b.dataset.open }); reloadTo() }
+  for (const b of $$('[data-remove]')) b.onclick = () => busy(b, async () => { await api(`/api/teams/${t.id}/remove`, { member: b.dataset.remove }); renderTeam() })
+  for (const b of $$('[data-cancel]')) b.onclick = () => busy(b, async () => { await api(`/api/teams/${t.id}/remove`, { email: b.dataset.cancel }); renderTeam() })
+  if ($('#team-invite')) $('#team-invite').onsubmit = (e) => { e.preventDefault(); busy(e.submitter, async () => { toast((await api(`/api/teams/${t.id}/invite`, { email: $('#invite-email').value })).message); renderTeam() }) }
+  if ($('#team-delete')) $('#team-delete').onclick = (e) => { if (confirm(`Delete “${t.name}” for everyone? Its settings and stories are removed.`)) busy(e.currentTarget, async () => { toast((await api(`/api/teams/${t.id}/delete`, {})).message); reloadTo() }) }
+  if ($('#team-leave')) $('#team-leave').onclick = (e) => busy(e.currentTarget, async () => { toast((await api(`/api/teams/${t.id}/leave`, {})).message); reloadTo() })
+  $('#team-create').onsubmit = (e) => { e.preventDefault(); busy(e.submitter, async () => { toast((await api('/api/teams', { name: $('#team-name').value })).message); reloadTo('interests') }) }
+}
+
 // ---------- trends ----------
 const delta = (n) => (n > 0 ? `<span class="up">▲ ${n}</span>` : n < 0 ? `<span class="down">▼ ${-n}</span>` : '<span class="flat">no change</span>')
 const srTable = (caption, head, rows) => `<table class="sr-only"><caption>${caption}</caption><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`
@@ -584,9 +628,12 @@ async function init() {
   if (!account) return showAuth()
   ;[catalog, me] = await Promise.all([api('/api/catalog'), api('/api/me')])
   renderAccount()
+  loadTeams().catch(() => {})
   // The token is fetched on page load, not in the click: the popup must open straight from the click.
-  embed = await api(`/api/viasocket/token?apps=${catalog.apps.map((a) => a.slug).join(',')}`)
-  loadConnectScript()
+  // the Connect token: only someone who may connect apps here gets one (a team member does not)
+  const slugs = [...new Set([...catalog.apps.map((a) => a.slug), ...catalog.actions.map((a) => a.app)])]
+  embed = await api(`/api/viasocket/token?apps=${slugs.join(',')}`).catch(() => null)
+  if (embed) loadConnectScript()
   me.profile.tags.forEach((t) => state.tags.add(t))
   me.profile.companies.forEach((c) => state.companies.add(c))
   Object.assign(state, {
@@ -613,4 +660,4 @@ async function init() {
   // back/forward and links like #schedule switch sections too
   window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (HEAD[v] && $(`.page[data-page=${v}]`).hidden) show(v) })
 }
-init().catch((e) => toast(e.message, true))
+init().catch((e) => { $('#shell').hidden = false; toast(`Briefly couldn’t load: ${e.message}`, true) }) // never a blank page

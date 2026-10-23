@@ -381,3 +381,28 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
 .vote.save.on { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
 .target-hint { margin: 16px 0 0; }
 #target-box .field select { max-width: 420px; }
+
+/* ---------- teams ---------- */
+.workspace { position: relative; display: flex; align-items: center; gap: 8px; margin: -12px 0 -8px; padding: 0 12px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.workspace svg { width: 17px; height: 17px; flex: none; }
+.workspace select { appearance: none; width: 100%; border: 0; background: transparent; color: var(--ink); font: 600 14px var(--sans); padding: 10px 16px 10px 0; cursor: pointer; }
+.workspace select option { background: var(--panel); }
+.workspace::after { content: '▾'; position: absolute; right: 12px; pointer-events: none; font-size: 12px; }
+.nav-badge { margin-left: auto; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--gold); color: var(--gold-ink); font-size: 11px; font-weight: 700; }
+.invite { display: flex; align-items: center; gap: 14px; margin-bottom: 0; border-color: var(--gold); }
+.invite .toggle-ico svg { width: 20px; height: 20px; }
+.invite .toggle-text { flex: 1; }
+.members { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.member { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.member .avatar { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(140deg, var(--gold), var(--gold-2)); color: var(--gold-ink); font-weight: 700; }
+.member.pending .avatar { background: var(--raise); color: var(--muted); }
+.member .avatar svg { width: 16px; height: 16px; }
+.member .who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.member .who b { font-weight: 600; font-size: 14px; }
+.member .who em { font-style: normal; font-size: 11px; color: var(--gold); margin-left: 6px; }
+.member .who small { color: var(--muted); font-size: 12px; }
+.member .link { border: 0; background: none; color: var(--muted); font-size: 13px; }
+.member .link:hover { color: var(--bad); }
+.team-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+@media (max-width: 860px) { .workspace { margin: 0; min-width: 140px; } .invite { flex-wrap: wrap; } }

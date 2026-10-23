@@ -45,6 +45,7 @@
       <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span>
       <span class="brand-name">Briefly</span>
     </div>
+    <label class="workspace" title="Switch workspace"><span data-icon="users"></span><select id="workspace" aria-label="Workspace"></select></label>
     <nav class="nav" id="nav">
       <button data-view="briefing"><span class="nav-ico" data-icon="layout"></span><span>Briefing</span></button>
       <button data-view="ask"><span class="nav-ico" data-icon="chat"></span><span>Ask Briefly</span></button>
@@ -53,6 +54,7 @@
       <button data-view="interests"><span class="nav-ico" data-icon="sparkles"></span><span>Interests</span><span class="nav-check" data-icon="check"></span></button>
       <button data-view="schedule"><span class="nav-ico" data-icon="clock"></span><span>Schedule</span><span class="nav-check" data-icon="check"></span></button>
       <button data-view="delivery"><span class="nav-ico" data-icon="send"></span><span>Delivery</span><span class="nav-check" data-icon="check"></span></button>
+      <button data-view="team"><span class="nav-ico" data-icon="users"></span><span>Team</span><span class="nav-badge" id="invite-badge" hidden></span></button>
     </nav>
     <div class="side-card" id="side-card"></div>
     <div class="account" id="account"></div>
@@ -135,6 +137,16 @@
         <div class="rising" id="rising"></div>
       </div>
       <div class="chart-tip" id="chart-tip" role="tooltip" hidden></div>
+    </section>
+
+    <!-- Team -->
+    <section class="page" data-page="team" hidden>
+      <div id="team-invites"></div>
+      <div id="team-current"></div>
+      <div class="panel">
+        <div class="panel-head"><h2>Create a team</h2><span class="hint">Its own interests, schedule and delivery, e.g. one shared Slack channel for everyone</span></div>
+        <form class="mute-form" id="team-create"><input class="input" id="team-name" maxlength="60" placeholder="Team name, e.g. ML study group"><button class="btn primary" type="submit">Create team</button></form>
+      </div>
     </section>
 
     <!-- Interests -->
