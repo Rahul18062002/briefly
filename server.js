@@ -7,7 +7,9 @@ import { load, save, getUser, putUser, userEvents } from './src/store.js'
 import { ensureEnabled, options, send } from './src/delivery.js'
 import { runCycle, runDigests, processUser, deliverDigest, pollSources } from './src/pipeline.js'
 import { digestMessage } from './src/format.js'
-import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
+import { learn } from './src/learning.js'
+import { ask, chatLog } from './src/ask.js'
+import { WEEKDAYS, validTime, validTimeZone, scheduleText, nextDigestLabel, formatTime, DEFAULT_TIME, DEFAULT_DAY } from './src/schedule.js'
 
 const app = express()
 app.use(express.json())
@@ -80,7 +82,8 @@ app.get('/api/me', async (req, res, next) => {
     }
     res.json({
       onboarded: user.onboarded,
-      profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, ...user.profile },
+      profile: { digestTime: DEFAULT_TIME, digestDay: DEFAULT_DAY, quietHours: { enabled: false, start: '22:00', end: '08:00' }, muteWords: [], ...user.profile },
+      learned: { votes: user.learned?.votes || 0 },
       schedule: { text: scheduleText(user.profile), next: nextDigestLabel(user.profile) },
       delivery: user.delivery,
       connections: Object.fromEntries(Object.entries(user.connections || {}).map(([slug, c]) => [slug, { connected: true, expired: expired[slug], authId: c.authId, label: c.label }]))
@@ -90,7 +93,7 @@ app.get('/api/me', async (req, res, next) => {
 
 app.post('/api/profile', (req, res) => {
   const user = currentUser(req)
-  const { tags, companies, frequency, learningMode, digestTime, digestDay, timezone } = req.body
+  const { tags, companies, frequency, learningMode, digestTime, digestDay, timezone, quietHours, muteWords } = req.body
   const validTags = (tags || []).filter((t) => tagById(t))
   if (!validTags.length) return res.status(400).json({ error: 'Pick at least one interest.' })
   user.profile = {
@@ -100,14 +103,20 @@ app.post('/api/profile', (req, res) => {
     digestTime: validTime(digestTime) || user.profile.digestTime || DEFAULT_TIME,
     digestDay: Number.isInteger(digestDay) && digestDay >= 0 && digestDay <= 6 ? digestDay : (user.profile.digestDay ?? DEFAULT_DAY),
     timezone: validTimeZone(timezone) ? timezone : (user.profile.timezone || 'UTC'),
-    learningMode: !!learningMode
+    learningMode: !!learningMode,
+    quietHours: quietHours && typeof quietHours === 'object'
+      ? { enabled: !!quietHours.enabled, start: validTime(quietHours.start) || '22:00', end: validTime(quietHours.end) || '08:00' }
+      : user.profile.quietHours || { enabled: false, start: '22:00', end: '08:00' },
+    muteWords: Array.isArray(muteWords)
+      ? [...new Set(muteWords.map((w) => String(w).trim().toLowerCase()).filter((w) => w.length >= 2 && w.length <= 40))].slice(0, 30)
+      : user.profile.muteWords || []
   }
   putUser(user)
   const names = validTags.map((t) => tagById(t).label)
   const follow = user.profile.companies.map((c) => companyById(c).label)
   res.json({
     ok: true,
-    message: `Saved. You’re following ${names.join(', ')}${follow.length ? `, and keeping a close eye on ${follow.join(', ')}` : ''}. ${scheduleText(user.profile)}${user.profile.learningMode ? ' Each item will include a short plain-language explanation.' : ''}`
+    message: `Saved. You’re following ${names.join(', ')}${follow.length ? `, and keeping a close eye on ${follow.join(', ')}` : ''}. ${scheduleText(user.profile)}${user.profile.learningMode ? ' Each item will include a short plain-language explanation.' : ''}${user.profile.quietHours.enabled ? ` No instant alerts between ${formatTime(user.profile.quietHours.start)} and ${formatTime(user.profile.quietHours.end)}.` : ''}${user.profile.muteWords.length ? ` Muted: ${user.profile.muteWords.join(', ')}.` : ''}`
   })
 })
 
@@ -189,12 +198,40 @@ app.get('/api/feed', (req, res) => {
   const db = load()
   const seen = userEvents(req.userId)
   const rows = Object.entries(seen).filter(([, s]) => s.ai && s.status !== 'skipped')
-    .map(([id, s]) => ({ id, status: s.status, mode: s.mode, at: s.sentAt || s.at, ...s.ai, url: db.events[id]?.url, sources: db.events[id]?.sources }))
+    .map(([id, s]) => ({ id, status: s.status, mode: s.mode, at: s.sentAt || s.at, vote: s.vote || 0, ...s.ai, url: db.events[id]?.url, sources: db.events[id]?.sources }))
     .sort((a, b) => b.relevance - a.relevance)
   const deliveries = db.deliveries.filter((d) => d.userId === req.userId).slice(0, 20).map(({ kind, ok, at, eventIds, detail }) => ({ kind, ok, at, count: eventIds.length, detail: ok ? undefined : 'Delivery did not go through; it will be retried with your next digest.' }))
   const sources = Object.entries(db.sourceStatus).map(([name, s]) => ({ name, ok: s.ok, at: s.at }))
   const user = getUser(req.userId)
   res.json({ items: rows, deliveries, sources, schedule: user ? { text: scheduleText(user.profile), next: nextDigestLabel(user.profile) } : null })
+})
+
+// 👍 / 👎 on a story: stored with the story, and the user's learned taste is rebuilt from all their votes
+app.post('/api/feedback', (req, res) => {
+  const user = getUser(req.userId)
+  const { eventId, vote } = req.body
+  const seen = user && userEvents(user.id)
+  if (!seen?.[eventId]?.ai || ![1, -1, 0].includes(vote)) return res.status(400).json({ error: 'That story can’t be rated.' })
+  Object.assign(seen[eventId], { vote, votedAt: new Date().toISOString() })
+  if (!vote) delete seen[eventId].vote
+  const learned = learn(user, seen, load().events)
+  putUser(user)
+  res.json({ ok: true, votes: learned.votes, message: vote > 0 ? 'Got it — more stories like this.' : vote < 0 ? 'Got it — fewer stories like this.' : 'Rating removed.' })
+})
+
+// Ask Briefly
+app.get('/api/ask', (req, res) => res.json({ messages: getUser(req.userId) ? chatLog(req.userId) : [] }))
+app.post('/api/ask', async (req, res, next) => {
+  try {
+    const user = getUser(req.userId)
+    if (!user?.onboarded) return res.status(400).json({ error: 'Finish setup first.' })
+    const question = String(req.body.question || '').trim().slice(0, 500)
+    if (!question && !req.body.newChat) return res.status(400).json({ error: 'Type a question.' })
+    if (!question) { user.askThread = null; chatLog(user.id).length = 0; putUser(user); return res.json({ messages: [] }) }
+    const reply = await ask(user, question, { newChat: !!req.body.newChat })
+    putUser(user)
+    res.json({ reply })
+  } catch (e) { next(e) }
 })
 
 app.post('/api/check-now', async (req, res, next) => {
@@ -218,6 +255,8 @@ app.post('/api/digest-now', async (req, res, next) => {
 
 app.use((err, req, res, next) => {
   console.error(err)
+  // viaSocket answers 402 when the account's AI credits run out: say so plainly instead of "something went wrong"
+  if (err.status === 402) return res.status(503).json({ error: 'Briefly’s AI is paused right now because the AI credits have run out. Please try again later.' })
   res.status(500).json({ error: 'Something went wrong on our side. Please try again in a moment.', detail: process.env.NODE_ENV === 'production' ? undefined : err.message })
 })
 

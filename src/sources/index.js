@@ -3,5 +3,6 @@
 import * as hackernews from './hackernews.js'
 import * as arxiv from './arxiv.js'
 import * as github from './github.js'
+import * as blogs from './blogs.js'
 
-export const pollers = { hackernews, arxiv, github }
+export const pollers = { hackernews, arxiv, github, blogs }

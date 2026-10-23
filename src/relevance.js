@@ -1,10 +1,11 @@
 // Relevance per user: a cheap keyword pass picks candidates, then viaSocket AI scores and summarizes them.
 import { viasocket } from './viasocket.js'
 import { engine, tagById, companyById } from './config.js'
+import { learnedScore } from './learning.js'
 
-const SOURCE_NAMES = { hackernews: 'Hacker News', arxiv: 'arXiv', github: 'GitHub' }
+const SOURCE_NAMES = { hackernews: 'Hacker News', arxiv: 'arXiv', github: 'GitHub', blogs: 'an official company blog' }
 
-export function keywordScore(event, profile) {
+export function keywordScore(event, profile, learned) {
   const text = ` ${event.title} ${event.text || ''} `.toLowerCase()
   let score = 0
   const matched = new Set()
@@ -16,7 +17,8 @@ export function keywordScore(event, profile) {
     const c = companyById(id)
     if (c?.keywords.some((k) => text.includes(k))) { score += 2; matched.add(c.id) }
   }
-  return { score: score + Math.min(event.sources.length - 1, 2), matched: [...matched] }
+  // past 👍/👎 on similar stories move it up or down
+  return { score: score + Math.min(event.sources.length - 1, 2) + learnedScore(event, learned), matched: [...matched] }
 }
 
 const SCHEMA = {
@@ -78,7 +80,7 @@ function describe(event, items) {
 }
 
 /** Scores and summarizes events for one user, in batches. Returns { [eventId]: result }. */
-export async function assess(userId, profile, events, itemsById) {
+export async function assess(userId, profile, events, itemsById, learned) {
   const interests = profile.tags.map((t) => tagById(t)?.label).filter(Boolean)
   const follows = profile.companies.map((c) => companyById(c)?.label).filter(Boolean)
   const out = {}
@@ -87,6 +89,8 @@ export async function assess(userId, profile, events, itemsById) {
     const message = [
       `Reader interests (use one of these exactly as "topic", or a company name below): ${interests.join('; ')}.`,
       follows.length ? `Companies the reader follows closely (raise relevance for news about them): ${follows.join('; ')}.` : '',
+      learned?.liked?.length ? `Stories this reader liked (rate similar ones higher): ${learned.liked.join(' | ')}.` : '',
+      learned?.disliked?.length ? `Stories this reader disliked (rate similar ones lower): ${learned.disliked.join(' | ')}.` : '',
       `Learning mode: ${profile.learningMode ? 'ON - fill "concept" with one plain explanation of the main idea a learner would need' : 'OFF - leave "concept" empty'}.`,
       '',
       ...batch.map((e) => describe(e, e.itemIds.map((id) => itemsById[id]).filter(Boolean)) + '\n---')

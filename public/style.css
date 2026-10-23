@@ -255,3 +255,56 @@ h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
   .tinted { background: hsl(var(--h) 70% 50% / .12); color: hsl(var(--h) 60% 38%); }
   .topic { color: hsl(var(--h, 40) 55% 36%); }
 }
+
+/* ---------- votes on stories ---------- */
+.foot-right { display: flex; align-items: center; gap: 14px; }
+.votes { display: inline-flex; gap: 6px; }
+.vote { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line-2); background: transparent; color: var(--muted); transition: all .15s; }
+.vote svg { width: 16px; height: 16px; }
+.vote:hover { color: var(--ink); border-color: var(--gold); }
+.vote.on { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+.vote.down.on { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); border-color: var(--bad); }
+
+/* ---------- ask ---------- */
+.chat { display: flex; flex-direction: column; min-height: calc(100vh - 220px); }
+.chat-log { flex: 1; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: calc(100vh - 340px); padding: 4px 2px 16px; }
+.msg { max-width: min(78%, 720px); padding: 12px 16px; border-radius: 16px; line-height: 1.6; font-size: 15px; animation: rise .25s ease both; }
+.msg.me { align-self: flex-end; background: linear-gradient(140deg, var(--gold), var(--gold-2)); color: var(--gold-ink); border-bottom-right-radius: 5px; font-weight: 500; }
+.msg.ai { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.cite { display: inline-grid; place-items: center; min-width: 17px; height: 17px; margin: 0 1px; padding: 0 4px; border-radius: 6px; background: var(--gold-soft); color: var(--gold); font-size: 11px; font-weight: 700; vertical-align: 2px; }
+.cites { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.cites a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; }
+.cites a:hover { border-color: var(--gold); }
+.cite-n { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 7px; background: var(--gold); color: var(--gold-ink); font-weight: 700; font-size: 12px; }
+.cite-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cites small { color: var(--muted); flex: none; }
+.typing { display: inline-flex; gap: 5px; align-items: center; padding: 16px 18px; }
+.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite ease-in-out; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.chat-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 420px; text-align: center; color: var(--muted); padding: 40px 0; }
+.chat-empty svg { width: 40px; height: 40px; color: var(--gold); }
+.chat-empty b { color: var(--ink); font: 600 20px var(--serif); }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.suggest button { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel-2); font-size: 13px; color: var(--ink-2); }
+.suggest button:hover { border-color: var(--gold); color: var(--ink); }
+.chat-input { display: flex; gap: 10px; }
+.chat-input .input { flex: 1; padding: 13px 16px; font-size: 15px; }
+.chat-note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+/* ---------- mute words & quiet hours ---------- */
+.mute-form { display: flex; gap: 10px; margin-bottom: 14px; }
+.mute-form .input { max-width: 360px; }
+.mute-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.mute-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px 6px 13px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line-2); font-size: 13px; font-weight: 500; }
+.mute-chip button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); }
+.mute-chip button:hover { background: var(--raise); color: var(--bad); }
+.mute-chip svg { width: 13px; height: 13px; }
+.toggle-card.plain { padding: 0; border: 0; background: none; box-shadow: none; }
+.quiet-times { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-left: 60px; }
+.quiet-times .select-wrap > span { font-size: 13px; }
+@media (max-width: 860px) {
+  .msg { max-width: 92%; }
+  .quiet-times { padding-left: 0; }
+  .foot-right { gap: 10px; }
+}

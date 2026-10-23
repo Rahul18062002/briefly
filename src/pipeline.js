@@ -7,7 +7,8 @@ import { keywordScore, assess } from './relevance.js'
 import { send } from './delivery.js'
 import { instantMessage, digestMessage } from './format.js'
 import { channelById } from './config.js'
-import { digestDue } from './schedule.js'
+import { digestDue, inQuietHours } from './schedule.js'
+import { mutedBy } from './learning.js'
 
 const log = (...a) => console.log(new Date().toISOString(), ...a)
 
@@ -49,12 +50,18 @@ export async function processUser(user, { since } = {}) {
   const seen = userEvents(user.id)
   const sinceMs = Date.parse(since || user.createdAt) - engine.dedupWindowDays * 864e5
   const pending = Object.values(db.events).filter((e) => !seen[e.id] && Date.parse(e.firstSeen) >= sinceMs)
-  const scored = pending.map((e) => ({ e, k: keywordScore(e, user.profile) }))
+  const muteWords = user.profile.muteWords || []
+  const unmuted = pending.filter((e) => {
+    const word = mutedBy(e, muteWords)
+    if (word) seen[e.id] = { status: 'skipped', reason: `muted: ${word}`, at: new Date().toISOString() }
+    return !word
+  })
+  const scored = unmuted.map((e) => ({ e, k: keywordScore(e, user.profile, user.learned) }))
   for (const { e, k } of scored) if (k.score === 0) seen[e.id] = { status: 'skipped', reason: 'no interest matched', at: new Date().toISOString() }
   const candidates = scored.filter((s) => s.k.score > 0).sort((a, b) => b.k.score - a.k.score).slice(0, engine.maxCandidatesPerRun)
   if (!candidates.length) { save(); return { assessed: 0, instant: 0, queued: 0 } }
 
-  const results = await assess(user.id, user.profile, candidates.map((c) => c.e), db.items)
+  const results = await assess(user.id, user.profile, candidates.map((c) => c.e), db.items, user.learned)
   let instant = 0, queued = 0
   for (const { e } of candidates) {
     const ai = results[e.id]
@@ -82,6 +89,7 @@ export async function deliverInstant(user) {
   const seen = userEvents(user.id)
   const channel = channelById(user.delivery?.channel)
   if (!channel || !user.delivery?.ready) return 0
+  if (inQuietHours(user.profile)) return 0 // they wait, and go out when quiet hours end
   let sent = 0
   for (const [id, s] of Object.entries(seen)) {
     if (s.status !== 'queued' || s.mode !== 'instant') continue
@@ -141,6 +149,8 @@ export async function runCycle() {
 export async function runDigests() {
   for (const user of Object.values(load().users)) {
     if (!user.onboarded) continue
+    // instant alerts held back by quiet hours go out once they end
+    try { await deliverInstant(user) } catch (error) { log(`[instant] ${user.id} failed: ${error.message}`) }
     const due = digestDue(user)
     if (!due) continue
     try { await deliverDigest(user, due.period, due.key) } catch (error) { log(`[digest] ${user.id} failed: ${error.message}`) }

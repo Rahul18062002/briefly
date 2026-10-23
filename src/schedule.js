@@ -75,3 +75,15 @@ export function scheduleText(profile) {
   if (profile.frequency === 'weekly') return `One roundup every ${WEEKDAYS[day]} at ${at}. Truly major launches still arrive right away.`
   return `One digest every day at ${at}. Truly major launches still arrive right away.`
 }
+
+/** True while the user's quiet hours are on in their own time zone; the window may cross midnight (22:00-08:00). */
+export function inQuietHours(profile, now = new Date()) {
+  const q = profile.quietHours
+  if (!q?.enabled || !validTime(q.start) || !validTime(q.end) || q.start === q.end) return false
+  const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
+  const tz = validTimeZone(profile.timezone) ? profile.timezone : 'UTC'
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).formatToParts(now)
+  const mins = +p.find((x) => x.type === 'hour').value * 60 + +p.find((x) => x.type === 'minute').value
+  const [start, end] = [toMin(q.start), toMin(q.end)]
+  return start < end ? mins >= start && mins < end : mins >= start || mins < end
+}

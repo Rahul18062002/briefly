@@ -19,6 +19,7 @@
     </div>
     <nav class="nav" id="nav">
       <button data-view="briefing"><span class="nav-ico" data-icon="layout"></span><span>Briefing</span></button>
+      <button data-view="ask"><span class="nav-ico" data-icon="chat"></span><span>Ask Briefly</span></button>
       <p class="nav-label">Your setup</p>
       <button data-view="interests"><span class="nav-ico" data-icon="sparkles"></span><span>Interests</span><span class="nav-check" data-icon="check"></span></button>
       <button data-view="schedule"><span class="nav-ico" data-icon="clock"></span><span>Schedule</span><span class="nav-check" data-icon="check"></span></button>
@@ -75,6 +76,19 @@
       </div>
     </section>
 
+    <!-- Ask -->
+    <section class="page" data-page="ask" hidden>
+      <div class="panel chat">
+        <div class="chat-log" id="chat-log"></div>
+        <div class="suggest" id="suggest"></div>
+        <form class="chat-input" id="ask-form">
+          <input class="input" id="ask-input" maxlength="500" autocomplete="off" placeholder="Ask about any company, model or topic…">
+          <button class="btn primary" id="ask-send" type="submit"><span data-icon="send"></span>Ask</button>
+        </form>
+        <p class="chat-note">Answers come only from stories Briefly has collected in the last 30 days, with links to every source.</p>
+      </div>
+    </section>
+
     <!-- Interests -->
     <section class="page" data-page="interests" hidden>
       <div class="panel">
@@ -90,6 +104,14 @@
         <span class="toggle-text"><b>Explain things like I’m learning</b><span>Each update adds one short, simple explanation of the idea behind it.</span></span>
         <input type="checkbox" id="learning"><span class="switch" aria-hidden="true"></span>
       </label>
+      <div class="panel">
+        <div class="panel-head"><h2>Mute words</h2><span class="hint">Stories containing these never reach you</span></div>
+        <form class="mute-form" id="mute-form">
+          <input class="input" id="mute-input" maxlength="40" placeholder="e.g. crypto, hiring, rumor">
+          <button class="btn ghost" type="submit">Add</button>
+        </form>
+        <div class="mute-list" id="mute-list"></div>
+      </div>
       <div class="page-actions"><button class="btn primary" data-save="interests">Save</button></div>
     </section>
 
@@ -110,6 +132,17 @@
           </div>
         </div>
         <div class="preview"><span data-icon="calendar"></span><span id="preview-text"></span></div>
+      </div>
+      <div class="panel">
+        <label class="toggle-card plain">
+          <span class="toggle-ico" data-icon="moon"></span>
+          <span class="toggle-text"><b>Quiet hours</b><span>No instant alerts during these hours; they arrive when quiet hours end.</span></span>
+          <input type="checkbox" id="quiet-on"><span class="switch" aria-hidden="true"></span>
+        </label>
+        <div class="quiet-times" id="quiet-times">
+          <label class="select-wrap"><span>From</span><select id="quiet-start"></select></label>
+          <label class="select-wrap"><span>To</span><select id="quiet-end"></select></label>
+        </div>
       </div>
       <div class="page-actions"><button class="btn primary" data-save="schedule">Save</button></div>
     </section>

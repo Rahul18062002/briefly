@@ -1,15 +1,88 @@
 {
-  "hackernews": { "enabled": true, "label": "Hacker News", "minPoints": 40, "hitsPerPage": 60 },
-  "arxiv": { "enabled": true, "label": "arXiv", "categories": ["cs.AI", "cs.CL", "cs.LG"], "maxResults": 40 },
+  "hackernews": {
+    "enabled": true,
+    "label": "Hacker News",
+    "minPoints": 40,
+    "hitsPerPage": 60
+  },
+  "arxiv": {
+    "enabled": true,
+    "label": "arXiv",
+    "categories": [
+      "cs.AI",
+      "cs.CL",
+      "cs.LG"
+    ],
+    "maxResults": 40
+  },
   "github": {
     "enabled": true,
     "label": "GitHub Releases",
     "includePrereleases": false,
     "repos": [
-      "ollama/ollama", "vllm-project/vllm", "huggingface/transformers", "ggml-org/llama.cpp",
-      "langchain-ai/langchain", "openai/openai-python", "anthropics/anthropic-sdk-python",
-      "pytorch/pytorch", "microsoft/autogen", "run-llama/llama_index", "comfyanonymous/ComfyUI",
-      "modelcontextprotocol/servers", "huggingface/lerobot", "openai/whisper"
+      "ollama/ollama",
+      "vllm-project/vllm",
+      "huggingface/transformers",
+      "ggml-org/llama.cpp",
+      "langchain-ai/langchain",
+      "openai/openai-python",
+      "anthropics/anthropic-sdk-python",
+      "pytorch/pytorch",
+      "microsoft/autogen",
+      "run-llama/llama_index",
+      "comfyanonymous/ComfyUI",
+      "modelcontextprotocol/servers",
+      "huggingface/lerobot",
+      "openai/whisper"
+    ]
+  },
+  "blogs": {
+    "enabled": true,
+    "label": "Company blogs",
+    "maxPerFeed": 10,
+    "feeds": [
+      {
+        "id": "openai",
+        "label": "OpenAI",
+        "company": "openai",
+        "url": "https://openai.com/news/rss.xml"
+      },
+      {
+        "id": "deepmind",
+        "label": "Google DeepMind",
+        "company": "google",
+        "url": "https://deepmind.google/blog/rss.xml"
+      },
+      {
+        "id": "google-ai",
+        "label": "Google AI",
+        "company": "google",
+        "url": "https://blog.google/technology/ai/rss/"
+      },
+      {
+        "id": "huggingface",
+        "label": "Hugging Face",
+        "company": "huggingface",
+        "url": "https://huggingface.co/blog/feed.xml"
+      },
+      {
+        "id": "microsoft-research",
+        "label": "Microsoft Research",
+        "company": "microsoft",
+        "url": "https://www.microsoft.com/en-us/research/feed/"
+      },
+      {
+        "id": "nvidia",
+        "label": "NVIDIA",
+        "company": "nvidia",
+        "url": "https://blogs.nvidia.com/feed/"
+      },
+      {
+        "id": "meta-engineering",
+        "label": "Meta Engineering",
+        "company": "meta",
+        "url": "https://engineering.fb.com/feed/"
+      }
     ]
   }
 }

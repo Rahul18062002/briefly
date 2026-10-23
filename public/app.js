@@ -31,7 +31,12 @@ const ICONS = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/>',
-  plug: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>'
+  plug: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>',
+  up: '<path d="M7 10v11H3V10z"/><path d="M7 10l4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.4 8A2 2 0 0 1 18.1 21H7"/>',
+  down: '<path d="M17 14V3h4v11z"/><path d="M17 14l-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.4-8A2 2 0 0 1 5.9 3H17"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>'
 }
 const icon = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.sparkles}</svg>`
 const paintIcons = (root = document) => $$('[data-icon]', root).forEach((el) => { el.innerHTML = icon(el.dataset.icon) })
@@ -42,7 +47,7 @@ const TOPIC_LOOK = {
   vision: ['image', 320], safety: ['shield', 120], 'dev-tools': ['code', 225], hardware: ['chip', 45], speech: ['mic', 285]
 }
 const tint = (hue) => `--h: ${hue}` // colors come from .tinted in the stylesheet, per theme
-const SOURCES = { hackernews: ['Hacker News', '#ff6600', 'Y'], arxiv: ['arXiv', '#b31b1b', 'aX'], github: ['GitHub', '#2f363d', 'GH'] }
+const SOURCES = { hackernews: ['Hacker News', '#ff6600', 'Y'], arxiv: ['arXiv', '#b31b1b', 'aX'], github: ['GitHub', '#2f363d', 'GH'], blogs: ['Company blogs', '#6e56cf', 'B'] }
 
 // ---------- api + feedback ----------
 const api = async (path, body) => {
@@ -67,11 +72,12 @@ async function busy(btn, fn) {
 
 // ---------- state ----------
 let catalog, me, embed
-const state = { tags: new Set(), companies: new Set(), frequency: 'daily', digestTime: '09:00', digestDay: 1, learning: false, channel: null, fields: {}, labels: {}, app: null, feedTab: 'queued' }
+const state = { tags: new Set(), companies: new Set(), frequency: 'daily', digestTime: '09:00', digestDay: 1, learning: false, channel: null, fields: {}, labels: {}, app: null, feedTab: 'queued', quiet: { enabled: false, start: '22:00', end: '08:00' }, mute: [] }
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 const HEAD = {
-  briefing: ['Your briefing', 'What’s new for you', 'Stories picked for your interests, and what is on its way to you.'],
+  briefing: ['Your briefing', 'What’s new for you', 'Stories picked for your interests, and what is on its way to you. Rate stories with 👍 / 👎 and Briefly learns your taste.'],
+  ask: ['Ask Briefly', 'Ask about the news', 'Questions are answered only from the stories Briefly has collected, with a link to every source.'],
   interests: ['Step 1 · Interests', 'What should we watch?', 'Pick the topics you care about. We read Hacker News, new research papers and GitHub releases, and keep only what matches.'],
   schedule: ['Step 2 · Schedule', 'When should we reach you?', 'Choose how often updates arrive. Big launches can always come right away.'],
   delivery: ['Step 3 · Delivery', 'Where should it go?', 'Connect the app you already use. We never see your password; the connection is handled securely by viaSocket.']
@@ -92,11 +98,12 @@ function nextLabel() {
 
 // ---------- navigation ----------
 function show(view) {
-  if (view === 'briefing' && !me.onboarded) view = 'interests'
+  if ((view === 'briefing' || view === 'ask') && !me.onboarded) view = 'interests'
+  if (view !== (location.hash.slice(1) || view)) $('#toast').hidden = true // a message belongs to the page it came from
   for (const p of $$('.page')) p.hidden = p.dataset.page !== view
   for (const b of $$('#nav button')) b.classList.toggle('on', b.dataset.view === view)
   const [eyebrow, title, lede] = HEAD[view]
-  $('#eyebrow').textContent = me.onboarded && view !== 'briefing' ? 'Settings' : eyebrow
+  $('#eyebrow').textContent = me.onboarded && !['briefing', 'ask'].includes(view) ? 'Settings' : eyebrow
   $('#title').textContent = title
   $('#lede').textContent = lede
   $('#top-actions').innerHTML = ''
@@ -106,12 +113,18 @@ function show(view) {
     $('#digest').onclick = (e) => busy(e.currentTarget, async () => { toast((await api('/api/digest-now', {})).message); await renderBriefing() })
     renderBriefing().catch((e) => toast(e.message, true))
   }
+  if (view === 'ask') {
+    $('#top-actions').innerHTML = `<button class="btn ghost" id="new-chat">${icon('plus')}New chat</button>`
+    $('#new-chat').onclick = (e) => busy(e.currentTarget, async () => { await api('/api/ask', { newChat: true }); chat = []; drawChat() })
+    renderAsk().catch((e) => toast(e.message, true))
+  }
   for (const b of $$('[data-save]')) b.textContent = me.onboarded ? 'Save changes' : b.dataset.save === 'delivery' ? 'Finish setup' : 'Continue'
   location.hash = view
   window.scrollTo({ top: 0 })
 }
 function renderNav() {
   $('#nav [data-view=briefing]').hidden = !me.onboarded
+  $('#nav [data-view=ask]').hidden = !me.onboarded
   $('#nav [data-view=interests]').classList.toggle('done', me.profile.tags.length > 0 && (me.onboarded || !!me.saved?.interests))
   $('#nav [data-view=schedule]').classList.toggle('done', me.onboarded || !!me.saved?.schedule)
   $('#nav [data-view=delivery]').classList.toggle('done', !!me.delivery?.ready)
@@ -135,9 +148,27 @@ function renderInterests() {
   $('#learning').checked = state.learning
   $('#learning').onchange = (e) => (state.learning = e.target.checked)
   count()
+  renderMute()
+  $('#mute-form').onsubmit = (e) => {
+    e.preventDefault()
+    const words = $('#mute-input').value.split(',').map((w) => w.trim().toLowerCase()).filter((w) => w.length >= 2)
+    state.mute = [...new Set([...state.mute, ...words])].slice(0, 30)
+    $('#mute-input').value = ''
+    renderMute()
+  }
+}
+function renderMute() {
+  $('#mute-list').innerHTML = state.mute.length
+    ? state.mute.map((w) => `<span class="mute-chip">${esc(w)}<button type="button" data-unmute="${esc(w)}" aria-label="Unmute ${esc(w)}">${icon('x')}</button></span>`).join('')
+    : '<span class="hint">Nothing muted.</span>'
+  for (const b of $$('[data-unmute]')) b.onclick = () => { state.mute = state.mute.filter((w) => w !== b.dataset.unmute); renderMute() }
 }
 
 // ---------- schedule ----------
+const timeOptions = (selected) => Array.from({ length: 48 }, (_, i) => {
+  const t = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
+  return `<option value="${t}" ${t === selected ? 'selected' : ''}>${fmtTime(t)}</option>`
+}).join('')
 const FREQ_ART = { instant: 'bolt', daily: 'sun', weekly: 'calendar' }
 const QUICK = [['07:00', 'Early'], ['09:00', 'Morning'], ['13:00', 'After lunch'], ['18:00', 'Evening'], ['21:00', 'Night']]
 function renderSchedule() {
@@ -166,6 +197,14 @@ function renderSchedule() {
   const what = state.frequency === 'instant' ? 'Major news arrives right away; the rest comes' : weekly ? 'Your roundup arrives' : 'Your digest arrives'
   const every = weekly ? `every ${catalog.weekdays[state.digestDay]} at ${fmtTime(state.digestTime)}` : `every day at ${fmtTime(state.digestTime)}`
   $('#preview-text').innerHTML = `${what} <b>${every}</b>. Next one: <b>${esc(nextLabel())}</b>.`
+
+  $('#quiet-on').checked = state.quiet.enabled
+  $('#quiet-on').onchange = (e) => { state.quiet.enabled = e.target.checked; renderSchedule() }
+  $('#quiet-times').hidden = !state.quiet.enabled
+  $('#quiet-start').innerHTML = timeOptions(state.quiet.start)
+  $('#quiet-end').innerHTML = timeOptions(state.quiet.end)
+  $('#quiet-start').onchange = (e) => (state.quiet.start = e.target.value)
+  $('#quiet-end').onchange = (e) => (state.quiet.end = e.target.value)
 }
 
 // ---------- delivery ----------
@@ -270,7 +309,9 @@ function story(r) {
     <div class="story-top"><span class="topic" style="--h: ${hue}">${esc(r.topic)}</span><span class="meter" title="How well it matches your interests"><i style="--v:${Math.max(0, Math.min(100, r.relevance))}%"></i>${r.relevance}</span></div>
     <h3>${esc(r.headline)}</h3><p>${esc(r.summary)}</p><p class="why"><b>Why it matters:</b> ${esc(r.why_it_matters)}</p>
     ${r.concept ? `<div class="concept">${icon('book')}<span>${esc(r.concept)}</span></div>` : ''}
-    <div class="story-foot"><div class="pills">${sources}</div><a class="read" href="${esc(r.url)}" target="_blank" rel="noopener">Read the source ${icon('arrow')}</a></div>
+    <div class="story-foot"><div class="pills">${sources}</div><div class="foot-right">
+      <span class="votes"><button class="vote ${r.vote > 0 ? 'on' : ''}" data-vote="1" data-id="${esc(r.id)}" title="More like this" aria-pressed="${r.vote > 0}">${icon('up')}</button><button class="vote down ${r.vote < 0 ? 'on' : ''}" data-vote="-1" data-id="${esc(r.id)}" title="Fewer like this" aria-pressed="${r.vote < 0}">${icon('down')}</button></span>
+      <a class="read" href="${esc(r.url)}" target="_blank" rel="noopener">Read the source ${icon('arrow')}</a></div></div>
   </div></article>`
 }
 let feed = null
@@ -280,6 +321,11 @@ function renderFeedList() {
   const empty = { queued: 'Nothing waiting yet. New stories show up here after the next check.', instant: 'No major launches sent yet. When something big lands, it arrives right away.', digested: 'No digest delivered yet.' }[state.feedTab]
   $('#feed-list').innerHTML = rows.length ? rows.map(story).join('') : `<div class="empty">${icon('inbox')}<span>${empty}</span></div>`
   for (const b of $$('#feed-tabs button')) b.classList.toggle('on', b.dataset.tab === state.feedTab)
+  for (const b of $$('[data-vote]')) b.onclick = async () => {
+    const item = feed.items.find((r) => r.id === b.dataset.id)
+    const vote = item.vote === +b.dataset.vote ? 0 : +b.dataset.vote // clicking again removes the rating
+    try { toast((await api('/api/feedback', { eventId: item.id, vote })).message); item.vote = vote; renderFeedList() } catch (e) { toast(e.message, true) }
+  }
 }
 async function renderBriefing() {
   feed = await api('/api/feed')
@@ -289,7 +335,7 @@ async function renderBriefing() {
     ['bolt', 45, count((r) => r.mode === 'instant' && r.status === 'sent'), 'Major alerts sent'],
     ['inbox', 225, count((r) => r.status === 'queued'), 'Waiting for your digest'],
     ['check', 150, count((r) => r.mode === 'digest' && r.status === 'sent'), 'Delivered in digests'],
-    ['globe', 262, `${live}/${Math.max(3, feed.sources.length)}`, 'Sources live']
+    ['globe', 262, `${live}/${Object.keys(SOURCES).length}`, 'Sources live']
   ]
   $('#stats').innerHTML = stats.map(([i, hue, n, label]) => `<div class="stat"><span class="stat-ico tinted" style="${tint(hue)}">${icon(i)}</span><div><b>${n}</b><span>${label}</span></div></div>`).join('')
   if (feed.schedule) { $('#next-digest').textContent = feed.schedule.next; $('#schedule-text').textContent = feed.schedule.text }
@@ -309,12 +355,46 @@ async function renderBriefing() {
   renderFeedList()
 }
 
+// ---------- ask ----------
+const SUGGEST = ['What did OpenAI announce this week?', 'Any new open-source model releases?', 'What’s new in research on AI agents?', 'What changed in vLLM recently?']
+let chat = []
+let asking = false
+async function renderAsk() { chat = (await api('/api/ask')).messages; drawChat() }
+function bubble(m) {
+  if (m.role === 'user') return `<div class="msg me">${esc(m.text)}</div>`
+  const text = esc(m.text).replace(/\[(\d+)\]/g, '<sup class="cite">$1</sup>').replace(/\n/g, '<br>')
+  const cites = (m.sources || []).map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener"><span class="cite-n">${s.n}</span><span class="cite-t">${esc(s.title)}</span><small>${esc(s.source || '')}</small></a>`).join('')
+  return `<div class="msg ai"><div>${text}</div>${cites ? `<div class="cites">${cites}</div>` : ''}</div>`
+}
+function drawChat() {
+  const log = $('#chat-log')
+  log.innerHTML = chat.length
+    ? chat.map(bubble).join('') + (asking ? '<div class="msg ai typing" aria-label="Briefly is thinking"><i></i><i></i><i></i></div>' : '')
+    : `<div class="chat-empty">${icon('chat')}<b>Ask anything about AI news</b><span>Briefly answers from the stories it has collected and shows where each fact came from.</span></div>`
+  $('#suggest').hidden = chat.length > 0
+  $('#suggest').innerHTML = SUGGEST.map((q) => `<button type="button" data-q="${esc(q)}">${esc(q)}</button>`).join('')
+  for (const b of $$('[data-q]')) b.onclick = () => askQuestion(b.dataset.q)
+  $('#ask-send').disabled = asking
+  log.scrollTop = log.scrollHeight
+}
+async function askQuestion(q) {
+  q = q.trim()
+  if (!q || asking) return
+  asking = true
+  chat.push({ role: 'user', text: q })
+  $('#ask-input').value = ''
+  drawChat()
+  try { chat.push((await api('/api/ask', { question: q })).reply) } catch (e) { chat.push({ role: 'assistant', text: `Sorry, that didn’t work: ${e.message}`, sources: [] }) }
+  asking = false
+  drawChat()
+}
+
 // ---------- saving ----------
 const saved = {} // steps saved during setup, for the checkmarks in the menu
 async function saveProfile() {
   const r = await api('/api/profile', {
     tags: [...state.tags], companies: [...state.companies], frequency: state.frequency, learningMode: state.learning,
-    digestTime: state.digestTime, digestDay: state.digestDay, timezone: TZ
+    digestTime: state.digestTime, digestDay: state.digestDay, timezone: TZ, quietHours: state.quiet, muteWords: state.mute
   })
   return r.message
 }
@@ -349,6 +429,7 @@ async function init() {
   me.profile.companies.forEach((c) => state.companies.add(c))
   Object.assign(state, {
     frequency: me.profile.frequency, digestTime: me.profile.digestTime || '09:00', digestDay: me.profile.digestDay ?? 1, learning: !!me.profile.learningMode,
+    quiet: { ...state.quiet, ...(me.profile.quietHours || {}) }, mute: [...(me.profile.muteWords || [])],
     channel: me.delivery?.channel, fields: { ...(me.delivery?.fields || {}) }, labels: { ...(me.delivery?.labels || {}) }
   })
   renderInterests()
@@ -360,6 +441,7 @@ async function init() {
   for (const b of $$('[data-save]')) b.onclick = () => save(b.dataset.save, b)
   for (const b of $$('#nav button')) b.onclick = () => show(b.dataset.view)
   for (const b of $$('#feed-tabs button')) b.onclick = () => { state.feedTab = b.dataset.tab; renderFeedList() }
+  $('#ask-form').onsubmit = (e) => { e.preventDefault(); askQuestion($('#ask-input').value) }
   renderNav()
   const wanted = location.hash.slice(1)
   show(HEAD[wanted] ? wanted : me.onboarded ? 'briefing' : 'interests')
