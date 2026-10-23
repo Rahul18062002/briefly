@@ -108,3 +108,29 @@ export async function assess(userId, profile, events, itemsById, learned) {
   }
   return out
 }
+
+/**
+ * When the AI is unavailable (credits used up, outage), a story is still ranked and delivered: relevance from the
+ * keyword match and the user's 👍/👎 learning, the original headline, and an excerpt of the source's own text.
+ * Never "major": without the AI's judgement nothing is pushed instantly.
+ */
+export function fallbackAssessment(event, keyword, items = []) {
+  const first = keyword.matched[0]
+  const topic = tagById(first)?.label || companyById(first)?.label || 'Your interests'
+  const raw = items.map((i) => i.text).find(Boolean) || ''
+  const sentence = raw.replace(/^Official [^.]{1,60} announcement\.\s*/, '').split(/(?<=[.!?])\s/)[0]
+  const excerpt = sentence.length > 240 ? sentence.slice(0, 240).replace(/\s+\S*$/, '') + '…' : sentence
+  const points = items.find((i) => i.signal?.points)?.signal.points
+  const seenOn = event.sources.map((s) => SOURCE_NAMES[s] || s).join(', ')
+  return {
+    id: event.id,
+    relevance: Math.min(72, 40 + keyword.score * 8),
+    major: false,
+    topic,
+    headline: event.title,
+    summary: excerpt || `New on ${seenOn}${points ? ` (${points} points)` : ''}.`,
+    why_it_matters: `Matches your interest in ${topic}. (AI summary unavailable right now; this is the original headline.)`,
+    concept: '',
+    fallback: true
+  }
+}

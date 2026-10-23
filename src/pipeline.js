@@ -1,9 +1,9 @@
 // Poll → dedup → relevance → summary → instant delivery or digest queue.
-import { load, save, userEvents } from './store.js'
+import { load, save, prune, userEvents } from './store.js'
 import { sources, engine } from './config.js'
 import { pollers } from './sources/index.js'
 import { cluster } from './dedup.js'
-import { keywordScore, assess } from './relevance.js'
+import { keywordScore, assess, fallbackAssessment } from './relevance.js'
 import { send } from './delivery.js'
 import { instantMessage, digestMessage } from './format.js'
 import { channelById } from './config.js'
@@ -33,6 +33,7 @@ export async function pollSources() {
   // Dedup first, so relevance and delivery only ever see one event per real-world happening.
   const created = cluster(fresh, db.events, { windowDays: engine.dedupWindowDays, threshold: engine.dedupSimilarity })
   save()
+  prune()
   log(`[dedup] ${fresh.length} new items → ${created.length} new events`)
   return { newItems: fresh.length, newEvents: created }
 }
@@ -61,10 +62,18 @@ export async function processUser(user, { since } = {}) {
   const candidates = scored.filter((s) => s.k.score > 0).sort((a, b) => b.k.score - a.k.score).slice(0, engine.maxCandidatesPerRun)
   if (!candidates.length) { save(); return { assessed: 0, instant: 0, queued: 0 } }
 
-  const results = await assess(user.id, user.profile, candidates.map((c) => c.e), db.items, user.learned)
+  let results = {}
+  let fallback = false
+  try {
+    results = await assess(user.id, user.profile, candidates.map((c) => c.e), db.items, user.learned)
+  } catch (error) {
+    // no AI right now (credits used up, outage): keep delivering with keyword ranking and original headlines
+    fallback = true
+    log(`[relevance] ${user.id}: AI unavailable (${error.message}); using keyword ranking`)
+  }
   let instant = 0, queued = 0
-  for (const { e } of candidates) {
-    const ai = results[e.id]
+  for (const { e, k } of candidates) {
+    const ai = results[e.id] || (fallback ? fallbackAssessment(e, k, e.itemIds.map((id) => db.items[id]).filter(Boolean)) : null)
     if (!ai) continue // left for the next run, never dropped
     const record = { ai, at: new Date().toISOString() }
     const mode = decide(ai, user.profile)
@@ -73,7 +82,7 @@ export async function processUser(user, { since } = {}) {
     mode === 'instant' ? instant++ : queued++
   }
   save()
-  log(`[relevance] ${user.id}: ${candidates.length} assessed, ${instant} instant, ${queued} for the digest`)
+  log(`[relevance] ${user.id}: ${candidates.length} assessed${fallback ? ' without AI' : ''}, ${instant} instant, ${queued} for the digest`)
   await deliverInstant(user)
   return { assessed: candidates.length, instant, queued }
 }

@@ -4,7 +4,7 @@ import { parseFeed } from '../src/sources/blogs.js'
 import { learn, learnedScore, mutedBy } from '../src/learning.js'
 import { inQuietHours } from '../src/schedule.js'
 // ask.js builds the viaSocket client on import; these tests make no calls, so placeholders do
-process.env.VIASOCKET_ORG_ID ||= 'test'; process.env.VIASOCKET_PROJECT_ID ||= 'test'; process.env.VIASOCKET_EMBED_SECRET ||= 'test'
+process.env.BRIEFLY_DB ||= ':memory:'; process.env.VIASOCKET_ORG_ID ||= 'test'; process.env.VIASOCKET_PROJECT_ID ||= 'test'; process.env.VIASOCKET_EMBED_SECRET ||= 'test'
 const { retrieve } = await import('../src/ask.js')
 
 const feed = { id: 'openai', label: 'OpenAI', company: 'openai' }
@@ -60,4 +60,16 @@ test('Ask Briefly finds the stories related to a question, newest relevant first
   assert.deepEqual(hits, ['a']) // a title match counts; one stray word in the text (d) does not; 45-day-old story is out of range
   assert.deepEqual(retrieve('agents paper from anthropic', events, {}, now).map((h) => h.e.id)[0], 'd')
   assert.deepEqual(retrieve('the and of', events, {}, now), [])
+})
+
+test('without the AI, a story still gets a score, its original headline and a clean excerpt', async () => {
+  const { fallbackAssessment } = await import('../src/relevance.js')
+  const event = { id: 'ev1', title: 'Show HN: A tiny agent framework', sources: ['hackernews'] }
+  const long = 'Agents ' + 'that plan and act '.repeat(30) + 'well. Second sentence.'
+  const a = fallbackAssessment(event, { score: 2, matched: ['agents'] }, [{ text: long, signal: { points: 120 } }])
+  assert.equal(a.headline, 'Show HN: A tiny agent framework')
+  assert.equal(a.topic, 'AI agents')
+  assert.equal(a.major, false)
+  assert.ok(a.summary.endsWith('…') && a.summary.length <= 241 && !/\s…$/.test(a.summary))
+  assert.equal(fallbackAssessment(event, { score: 1, matched: [] }, []).summary, 'New on Hacker News.')
 })

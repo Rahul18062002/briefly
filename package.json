@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "start": "node server.js",
-    "verify": "node scripts/verify.mjs"
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "verify": "node --disable-warning=ExperimentalWarning scripts/verify.mjs"
   },
   "keywords": [],
   "author": "",

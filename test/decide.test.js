@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 // The pipeline module builds the viaSocket client on import; these tests make no calls, so placeholders do.
-process.env.VIASOCKET_ORG_ID ||= 'test'; process.env.VIASOCKET_PROJECT_ID ||= 'test'; process.env.VIASOCKET_EMBED_SECRET ||= 'test'
+process.env.BRIEFLY_DB ||= ':memory:'; process.env.VIASOCKET_ORG_ID ||= 'test'; process.env.VIASOCKET_PROJECT_ID ||= 'test'; process.env.VIASOCKET_EMBED_SECRET ||= 'test'
 const { decide, digestDue } = await import('../src/pipeline.js')
 
 const daily = { frequency: 'daily' }, majorOnly = { frequency: 'instant' }

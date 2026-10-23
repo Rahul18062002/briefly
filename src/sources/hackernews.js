@@ -1,4 +1,6 @@
 // Hacker News through the public Algolia API: current front-page stories plus fresh, already-popular ones.
+const decode = (s) => s.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+  .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
 export async function poll(cfg) {
   const since = Math.floor(Date.now() / 1000) - 36 * 3600
   const urls = [
@@ -17,7 +19,7 @@ export async function poll(cfg) {
         title: hit.title,
         url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
         discussionUrl: `https://news.ycombinator.com/item?id=${hit.objectID}`,
-        text: (hit.story_text || '').replace(/<[^>]+>/g, ' ').slice(0, 1200),
+        text: decode((hit.story_text || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 1200),
         publishedAt: hit.created_at,
         signal: { points: hit.points, comments: hit.num_comments }
       })
