@@ -36,3 +36,10 @@ test('which channel replies come from, and the secret check', () => {
   assert.equal(replyChannel({ delivery: { channel: 'gmail', fields: {} } }), null)
   assert.equal(checkSecret({ replies: {} }, 'Bearer x'), false)
 })
+
+test('a real Slack thread reply (from viaSocket sampleEvent, org 4160) is read correctly', () => {
+  const real = { token: null, team_id: 'T082ACF6L9J', type: 'event_callback', event: { user: 'U0A6THCVAH1', type: 'message', ts: '1785577604.842049', text: 'test', team: 'T082ACF6L9J', thread_ts: '1785577450.519559', parent_user_id: 'U0A6THCVAH1', channel: 'C07DZ9UG46S', event_ts: '1785577604.842049', channel_type: 'channel' } }
+  // the handler forwards it as { event: context.req.body }
+  assert.deepEqual(readEvent('slack', { event: real }), { text: 'test', fromBot: false, channel: 'C07DZ9UG46S', threadTs: '1785577450.519559', parentKey: 'slack:C07DZ9UG46S:1785577450.519559' })
+  assert.equal(readEvent('slack', { event: { ...real, event: { ...real.event, bot_id: 'B1' } } }).fromBot, true)
+})

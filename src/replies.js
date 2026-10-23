@@ -119,7 +119,7 @@ async function post(user, app, msg, text) {
   return out
 }
 
-async function explain(user, event, ai) {
+export async function explain(user, event, ai) {
   const lang = LANGUAGES[user.profile.language] && user.profile.language !== 'en' ? ` Answer in ${LANGUAGES[user.profile.language]}.` : ''
   try {
     const items = event.itemIds.map((id) => load().items[id]).filter(Boolean)

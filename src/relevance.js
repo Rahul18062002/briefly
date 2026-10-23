@@ -59,7 +59,7 @@ Rules:
   If the item says little (a bare version tag), say only what is known, e.g. "A new version is out".
 - No jargon without a short explanation. No hype words.
 - Don't repeat dates, ids or version metadata beyond what a reader needs (the version number is fine).
-- Write like a news editor speaking to the reader: never say "the item", "the entry", "the text" or "provided text"; if there are no details, just say a new version is out.
+- Write like a news editor speaking to the reader: never say "the item", "the entry", "the text", "the headline" or "provided text", and never remark that details are missing. If there is only a headline, say in one sentence what it announces.
 - Relevance calibration: a routine patch release (x.y.Z) with no notes is 25-45; a minor release with no notes
   45-65 (higher if the reader follows that company); a new major version (X.0), a new model, or a result many
   people discuss is 70+. Papers: 40-70 by how closely they match the reader's interests.

@@ -138,10 +138,17 @@ app.get('/api/me', async (req, res, next) => {
     const expired = {}
     if (Object.keys(user.connections || {}).length) {
       const live = await viasocket.user(user.id).listConnections()
+      let changed = false
       for (const [slug, c] of Object.entries(user.connections)) {
         const found = live.find((l) => l.id === c.authId)
-        expired[slug] = !found || found.isExpired === true
+        if (found) { expired[slug] = found.isExpired === true; continue }
+        // gone from viaSocket (revoked, or the product moved to another viaSocket org): connect again from scratch
+        delete user.connections[slug]
+        if (channelById(user.delivery?.channel)?.app === slug) user.delivery = { ...user.delivery, ready: false }
+        if (user.replies?.app === slug) user.replies = { enabled: false }
+        changed = true
       }
+      if (changed && getUser(user.id)) putUser(user)
     }
     res.json({
       account: req.account,
