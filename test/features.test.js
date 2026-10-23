@@ -102,3 +102,26 @@ test('one-click save: a story becomes one Google Sheets row, passed as JSON', as
   assert.equal(row.Headline, 'Clear headline')
   assert.equal(row.Source, 'hackernews, github')
 })
+
+test('GitHub releases feed (used when the API is refused): newest stable release, notes as text', async () => {
+  const { poll } = await import('../src/sources/github.js')
+  const atom = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+    <entry><id>tag:github.com,2008:Repository/1/v0.41.0-rc1</id><updated>2026-10-22T09:00:00Z</updated>
+      <link rel="alternate" type="text/html" href="https://github.com/ollama/ollama/releases/tag/v0.41.0-rc1"/><title>v0.41.0-rc1</title><content type="html">&lt;p&gt;pre&lt;/p&gt;</content></entry>
+    <entry><id>tag:github.com,2008:Repository/1/v0.40.8</id><updated>2026-10-21T14:45:50Z</updated>
+      <link rel="alternate" type="text/html" href="https://github.com/ollama/ollama/releases/tag/v0.40.8"/><title>v0.40.8</title>
+      <content type="html">&lt;h2&gt;What&amp;#39;s Changed&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;Faster model loading&lt;/li&gt;&lt;/ul&gt;</content></entry></feed>`
+  const real = globalThis.fetch
+  globalThis.fetch = async (url) => String(url).includes('api.github.com')
+    ? { ok: false, status: 403 } // the API refuses, as on a shared server over its quota
+    : { ok: true, status: 200, text: async () => atom }
+  try {
+    const [item, ...rest] = await poll({ repos: ['ollama/ollama'], includePrereleases: false })
+    assert.equal(rest.length, 0)
+    assert.equal(item.title, 'ollama 0.40.8 released')
+    assert.equal(item.url, 'https://github.com/ollama/ollama/releases/tag/v0.40.8')
+    assert.equal(item.publishedAt, '2026-10-21T14:45:50Z')
+    assert.match(item.text, /What's Changed Faster model loading/)
+    assert.equal(item.signal.via, 'atom')
+  } finally { globalThis.fetch = real }
+})
